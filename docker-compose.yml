@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: tibta65-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tibta65
+    ports:
+      - "5433:5432"
+    volumes:
+      - tibta65_pgdata:/var/lib/postgresql/data
+
+volumes:
+  tibta65_pgdata:
