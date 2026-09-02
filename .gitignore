@@ -1,8 +1,8 @@
 # Binaries
 /bin/
 /tmp/
-tibta65-server
-api
+/tibta65-server
+/api
 
 # Env
 .env
