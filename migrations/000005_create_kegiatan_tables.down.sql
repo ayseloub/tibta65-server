@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS kegiatans;
+DROP TABLE IF EXISTS kategoris;
+DROP TABLE IF EXISTS kordas;

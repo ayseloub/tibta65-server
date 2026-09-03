@@ -23,6 +23,10 @@ import (
 	echoSwagger "github.com/swaggo/echo-swagger"
 
 	"github.com/Tibta65web/tibta65-server/pkg/storage"
+
+	"github.com/Tibta65web/tibta65-server/internal/domain/kategori"
+	"github.com/Tibta65web/tibta65-server/internal/domain/kegiatan"
+	"github.com/Tibta65web/tibta65-server/internal/domain/korda"
 )
 
 const jwtExpiry = 2 * time.Hour
@@ -81,6 +85,18 @@ func main() {
 	achievementService := achievement.NewService(achievementRepo, fileStorage)
 	achievementHandler := achievement.NewHandler(achievementService)
 
+	kordaRepo := korda.NewRepository(db)
+	kordaService := korda.NewService(kordaRepo)
+	kordaHandler := korda.NewHandler(kordaService)
+
+	kategoriRepo := kategori.NewRepository(db)
+	kategoriService := kategori.NewService(kategoriRepo)
+	kategoriHandler := kategori.NewHandler(kategoriService)
+
+	kegiatanRepo := kegiatan.NewRepository(db)
+	kegiatanService := kegiatan.NewService(kegiatanRepo, fileStorage)
+	kegiatanHandler := kegiatan.NewHandler(kegiatanService)
+
 	e := echo.New()
 	e.HideBanner = true
 
@@ -105,6 +121,9 @@ func main() {
 	auth.RegisterRoutes(e, authHandler, cfg.JWTSecret)
 	backgroundcontent.RegisterRoutes(e, bgHandler, cfg.JWTSecret)
 	achievement.RegisterRoutes(e, achievementHandler, cfg.JWTSecret)
+	korda.RegisterRoutes(e, kordaHandler, cfg.JWTSecret)
+	kategori.RegisterRoutes(e, kategoriHandler, cfg.JWTSecret)
+	kegiatan.RegisterRoutes(e, kegiatanHandler, cfg.JWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {
