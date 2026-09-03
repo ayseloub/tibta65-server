@@ -29,7 +29,7 @@ func NewRepository(db *sqlx.DB) Repository {
 func (r *repository) FindAll(ctx context.Context, page, limit int, year string) ([]Achievement, int, error) {
 	offset := (page - 1) * limit
 
-	var achievements []Achievement
+	achievements := []Achievement{}
 	var total int
 
 	whereClause := ""
