@@ -27,6 +27,8 @@ import (
 	"github.com/Tibta65web/tibta65-server/internal/domain/kategori"
 	"github.com/Tibta65web/tibta65-server/internal/domain/kegiatan"
 	"github.com/Tibta65web/tibta65-server/internal/domain/korda"
+
+	"github.com/Tibta65web/tibta65-server/internal/domain/adminmanagement"
 )
 
 const jwtExpiry = 2 * time.Hour
@@ -97,6 +99,10 @@ func main() {
 	kegiatanService := kegiatan.NewService(kegiatanRepo, fileStorage)
 	kegiatanHandler := kegiatan.NewHandler(kegiatanService)
 
+	adminMgmtRepo := adminmanagement.NewRepository(db)
+	adminMgmtService := adminmanagement.NewService(adminMgmtRepo)
+	adminMgmtHandler := adminmanagement.NewHandler(adminMgmtService)
+
 	e := echo.New()
 	e.HideBanner = true
 
@@ -104,7 +110,7 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{
-			"https://tibta65.vercel.app", // ganti sesuai domain Vercel kamu yang beneran
+			"https://tibta65.vercel.app",
 		},
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
 		AllowHeaders: []string{"Content-Type", "Authorization"},
@@ -124,6 +130,7 @@ func main() {
 	korda.RegisterRoutes(e, kordaHandler, cfg.JWTSecret)
 	kategori.RegisterRoutes(e, kategoriHandler, cfg.JWTSecret)
 	kegiatan.RegisterRoutes(e, kegiatanHandler, cfg.JWTSecret)
+	adminmanagement.RegisterRoutes(e, adminMgmtHandler, cfg.JWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {

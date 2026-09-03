@@ -50,6 +50,8 @@ func (s *service) Login(ctx context.Context, username, password string) (*LoginR
 		return nil, ErrInvalidCredentials
 	}
 
+	_ = s.repo.UpdateLastLogin(ctx, admin.ID)
+
 	token, err := jwt.GenerateToken(s.jwtSecret, admin.ID, admin.Role, s.jwtExpiry)
 	if err != nil {
 		return nil, err
