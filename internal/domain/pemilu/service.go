@@ -59,6 +59,7 @@ type Service interface {
 	DeleteKandidat(ctx context.Context, id string) error
 	MemberDashboard(ctx context.Context, memberID string) (*MemberDashboardResult, error)
 	CastVote(ctx context.Context, memberID, kandidatID string) error
+	ResetPemilu(ctx context.Context) error
 }
 
 type service struct {
@@ -67,6 +68,10 @@ type service struct {
 
 func NewService(repo Repository) Service {
 	return &service{repo: repo}
+}
+
+func (s *service) ResetPemilu(ctx context.Context) error {
+	return s.repo.ResetAll(ctx)
 }
 
 func computeStatus(s *Settings) string {

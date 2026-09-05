@@ -151,6 +151,13 @@ func handleError(c echo.Context, err error) error {
 	}
 }
 
+func (h *Handler) ResetPemilu(c echo.Context) error {
+	if err := h.service.ResetPemilu(c.Request().Context()); err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Pemilu berhasil direset, semua kandidat dan suara telah dihapus", nil)
+}
+
 func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret, memberJWTSecret string) {
 	group := e.Group("/api/admin/pemilu",
 		appMiddleware.RequireAuth(jwtSecret),
@@ -163,6 +170,7 @@ func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret, memberJWTSecret string)
 	group.POST("/kandidat", h.CreateKandidat)
 	group.PUT("/kandidat/:id", h.UpdateKandidat)
 	group.DELETE("/kandidat/:id", h.DeleteKandidat)
+	group.POST("/reset", h.ResetPemilu)
 
 	memberGroup := e.Group("/api/member-auth/pemilu", appMiddleware.RequireMemberAuth(memberJWTSecret))
 	memberGroup.GET("", h.MemberDashboard)

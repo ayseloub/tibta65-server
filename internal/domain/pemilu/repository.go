@@ -15,6 +15,7 @@ var ErrNotFound = errors.New("kandidat not found")
 var ErrAlreadyVoted = errors.New("kamu sudah memberikan suara sebelumnya")
 var ErrPemiluNotActive = errors.New("pemilu sedang tidak aktif")
 var ErrKandidatNotFound = errors.New("kandidat tidak ditemukan")
+var ErrKandidatHasVotes = errors.New("kandidat sudah memiliki suara, tidak bisa dihapus satu-satu — gunakan Reset Pemilu untuk memulai periode baru")
 
 type Repository interface {
 	FindSettings(ctx context.Context) (*Settings, error)
@@ -32,6 +33,7 @@ type Repository interface {
 
 	FindMemberVote(ctx context.Context, memberID string) (*string, error)
 	CreateVote(ctx context.Context, memberID, kandidatID string) error
+	ResetAll(ctx context.Context) error
 }
 
 type repository struct {
@@ -55,7 +57,7 @@ func (r *repository) UpdateSettings(ctx context.Context, startAt, endAt string) 
 	var s Settings
 	query := `
 		UPDATE pemilu_settings
-		SET start_at = $1, end_at = $2, updated_at = now()
+		SET start_at = $1, end_at = $2, closed_early_at = NULL, updated_at = now()
 		RETURNING id, start_at, end_at, closed_early_at, created_at, updated_at
 	`
 	if err := r.db.GetContext(ctx, &s, query, startAt, endAt); err != nil {
@@ -131,6 +133,9 @@ func (r *repository) UpdateKandidat(ctx context.Context, k *Kandidat) error {
 func (r *repository) DeleteKandidat(ctx context.Context, id string) error {
 	result, err := r.db.ExecContext(ctx, "DELETE FROM kandidats WHERE id = $1", id)
 	if err != nil {
+		if isForeignKeyError(err) {
+			return ErrKandidatHasVotes
+		}
 		return err
 	}
 	rows, _ := result.RowsAffected()
@@ -185,4 +190,9 @@ func isDuplicateKeyError(err error) bool {
 func isForeignKeyError(err error) bool {
 	var pqErr *pq.Error
 	return errors.As(err, &pqErr) && pqErr.Code == "23503"
+}
+
+func (r *repository) ResetAll(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, "TRUNCATE votes, kandidats CASCADE")
+	return err
 }
