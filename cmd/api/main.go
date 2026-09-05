@@ -33,6 +33,8 @@ import (
 	"github.com/Tibta65web/tibta65-server/internal/domain/member"
 
 	"github.com/Tibta65web/tibta65-server/pkg/email"
+
+	"github.com/Tibta65web/tibta65-server/internal/domain/pemilu"
 )
 
 const jwtExpiry = 2 * time.Hour
@@ -121,6 +123,10 @@ func main() {
 	memberService := member.NewService(memberRepo, memberOTPRepo, emailSender, fileStorage, cfg.MemberJWTSecret, jwtExpiry, cfg.GoogleClientID)
 	memberHandler := member.NewHandler(memberService)
 
+	pemiluRepo := pemilu.NewRepository(db)
+	pemiluService := pemilu.NewService(pemiluRepo)
+	pemiluHandler := pemilu.NewHandler(pemiluService)
+
 	e := echo.New()
 	e.HideBanner = true
 
@@ -150,6 +156,7 @@ func main() {
 	kegiatan.RegisterRoutes(e, kegiatanHandler, cfg.JWTSecret)
 	adminmanagement.RegisterRoutes(e, adminMgmtHandler, cfg.JWTSecret)
 	member.RegisterRoutes(e, memberHandler, cfg.MemberJWTSecret)
+	pemilu.RegisterRoutes(e, pemiluHandler, cfg.JWTSecret, cfg.MemberJWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {

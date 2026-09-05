@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS votes;
+DROP TABLE IF EXISTS kandidats;
+DROP TABLE IF EXISTS pemilu_settings;
