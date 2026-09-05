@@ -1,0 +1,1 @@
+ALTER TABLE member_otps DROP COLUMN purpose;

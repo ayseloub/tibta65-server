@@ -40,10 +40,11 @@ func NewS3Storage(endpoint, accessKey, secretKey, bucketName string, useSSL bool
 }
 
 func (s *S3Storage) Upload(ctx context.Context, fileHeader *multipart.FileHeader, folder string) (string, error) {
-	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-	if !allowedImageExt[ext] {
-		return "", fmt.Errorf("tipe file tidak didukung: %s", ext)
+	if err := validateFile(fileHeader); err != nil {
+		return "", err
 	}
+
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
 
 	src, err := fileHeader.Open()
 	if err != nil {

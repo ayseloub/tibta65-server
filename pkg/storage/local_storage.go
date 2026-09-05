@@ -20,8 +20,8 @@ var allowedImageExt = map[string]bool{
 }
 
 type LocalStorage struct {
-	baseDir string // contoh: "./uploads"
-	baseURL string // contoh: "/uploads" — HARUS sama dengan prefix yang di-serve Echo nanti
+	baseDir string
+	baseURL string
 }
 
 func NewLocalStorage(baseDir, baseURL string) *LocalStorage {
@@ -29,10 +29,11 @@ func NewLocalStorage(baseDir, baseURL string) *LocalStorage {
 }
 
 func (s *LocalStorage) Upload(ctx context.Context, fileHeader *multipart.FileHeader, folder string) (string, error) {
-	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-	if !allowedImageExt[ext] {
-		return "", fmt.Errorf("tipe file tidak didukung: %s", ext)
+	if err := validateFile(fileHeader); err != nil {
+		return "", err
 	}
+
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
 
 	src, err := fileHeader.Open()
 	if err != nil {
@@ -68,9 +69,6 @@ func (s *LocalStorage) Delete(ctx context.Context, path string) error {
 
 	if err := os.Remove(fullPath); err != nil {
 		if os.IsNotExist(err) {
-			// File udah gak ada — anggap sukses, bukan error.
-			// Delete itu wajib idempotent: dipanggil berkali-kali buat target yang sama,
-			// hasilnya harus tetap "berhasil", bukan error kedua-kalinya.
 			return nil
 		}
 		return err

@@ -29,6 +29,10 @@ import (
 	"github.com/Tibta65web/tibta65-server/internal/domain/korda"
 
 	"github.com/Tibta65web/tibta65-server/internal/domain/adminmanagement"
+
+	"github.com/Tibta65web/tibta65-server/internal/domain/member"
+
+	"github.com/Tibta65web/tibta65-server/pkg/email"
 )
 
 const jwtExpiry = 2 * time.Hour
@@ -75,6 +79,15 @@ func main() {
 		fileStorage = storage.NewLocalStorage(cfg.UploadDir, cfg.UploadURL)
 	}
 
+	var emailSender email.EmailSender
+
+	switch cfg.EmailDriver {
+	case "brevo":
+		emailSender = email.NewBrevoEmailSender(cfg.BrevoAPIKey, cfg.BrevoSenderEmail, cfg.BrevoSenderName)
+	default:
+		emailSender = email.NewConsoleEmailSender()
+	}
+
 	authRepo := auth.NewRepository(db)
 	authService := auth.NewService(authRepo, cfg.JWTSecret, jwtExpiry)
 	authHandler := auth.NewHandler(authService)
@@ -102,6 +115,11 @@ func main() {
 	adminMgmtRepo := adminmanagement.NewRepository(db)
 	adminMgmtService := adminmanagement.NewService(adminMgmtRepo)
 	adminMgmtHandler := adminmanagement.NewHandler(adminMgmtService)
+
+	memberRepo := member.NewRepository(db)
+	memberOTPRepo := member.NewOTPRepository(db)
+	memberService := member.NewService(memberRepo, memberOTPRepo, emailSender, fileStorage, cfg.MemberJWTSecret, jwtExpiry, cfg.GoogleClientID)
+	memberHandler := member.NewHandler(memberService)
 
 	e := echo.New()
 	e.HideBanner = true
@@ -131,6 +149,7 @@ func main() {
 	kategori.RegisterRoutes(e, kategoriHandler, cfg.JWTSecret)
 	kegiatan.RegisterRoutes(e, kegiatanHandler, cfg.JWTSecret)
 	adminmanagement.RegisterRoutes(e, adminMgmtHandler, cfg.JWTSecret)
+	member.RegisterRoutes(e, memberHandler, cfg.MemberJWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {

@@ -1,0 +1,1 @@
+ALTER TABLE members ALTER COLUMN korda_id SET NOT NULL;

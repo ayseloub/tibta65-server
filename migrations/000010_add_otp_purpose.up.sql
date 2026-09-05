@@ -1,0 +1,1 @@
+ALTER TABLE member_otps ADD COLUMN purpose VARCHAR(20) NOT NULL DEFAULT 'register';
