@@ -28,6 +28,7 @@ func (h *Handler) Get(c echo.Context) error {
 
 type updateRequest struct {
 	Email        string `json:"email"`
+	Phone        string `json:"phone"`
 	YoutubeURL   string `json:"youtube_url"`
 	InstagramURL string `json:"instagram_url"`
 	FacebookURL  string `json:"facebook_url"`
@@ -43,7 +44,7 @@ func (h *Handler) Update(c echo.Context) error {
 	}
 
 	result, err := h.service.Update(c.Request().Context(), UpdateInput{
-		Email: req.Email, YoutubeURL: req.YoutubeURL, InstagramURL: req.InstagramURL,
+		Email: req.Email, Phone: req.Phone, YoutubeURL: req.YoutubeURL, InstagramURL: req.InstagramURL,
 		FacebookURL: req.FacebookURL, Address: req.Address, MapsEmbedURL: req.MapsEmbedURL, MapsLink: req.MapsLink,
 	})
 	if err != nil {

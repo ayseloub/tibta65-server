@@ -4,6 +4,7 @@ import "context"
 
 type UpdateInput struct {
 	Email        string
+	Phone        string
 	YoutubeURL   string
 	InstagramURL string
 	FacebookURL  string
@@ -38,7 +39,7 @@ func (s *service) Get(ctx context.Context) (*Settings, error) {
 
 func (s *service) Update(ctx context.Context, in UpdateInput) (*Settings, error) {
 	settings := &Settings{
-		Email: strPtr(in.Email), YoutubeURL: strPtr(in.YoutubeURL), InstagramURL: strPtr(in.InstagramURL),
+		Email: strPtr(in.Email), Phone: strPtr(in.Phone), YoutubeURL: strPtr(in.YoutubeURL), InstagramURL: strPtr(in.InstagramURL),
 		FacebookURL: strPtr(in.FacebookURL), Address: strPtr(in.Address),
 		MapsEmbedURL: strPtr(in.MapsEmbedURL), MapsLink: strPtr(in.MapsLink),
 	}
