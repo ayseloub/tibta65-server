@@ -16,6 +16,7 @@ import (
 	"github.com/Tibta65web/tibta65-server/internal/domain/achievement"
 	"github.com/Tibta65web/tibta65-server/internal/domain/auth"
 	"github.com/Tibta65web/tibta65-server/internal/domain/backgroundcontent"
+	"github.com/Tibta65web/tibta65-server/internal/domain/berita"
 	"github.com/Tibta65web/tibta65-server/pkg/database"
 	"github.com/Tibta65web/tibta65-server/pkg/logger"
 
@@ -151,6 +152,10 @@ func main() {
 	ticketService := ticket.NewService(ticketRepo)
 	ticketHandler := ticket.NewHandler(ticketService)
 
+	beritaRepo := berita.NewRepository(db)
+	beritaService := berita.NewService(beritaRepo, fileStorage)
+	beritaHandler := berita.NewHandler(beritaService)
+
 	e := echo.New()
 	e.HideBanner = true
 
@@ -185,6 +190,7 @@ func main() {
 	gallery.RegisterRoutes(e, galleryHandler, cfg.JWTSecret)
 	sitesettings.RegisterRoutes(e, siteSettingsHandler, cfg.JWTSecret)
 	ticket.RegisterRoutes(e, ticketHandler, cfg.MemberJWTSecret, cfg.JWTSecret)
+	berita.RegisterRoutes(e, beritaHandler, cfg.JWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {
