@@ -35,6 +35,9 @@ func (h *Handler) MemberDashboard(c echo.Context) error {
 	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 	result, err := h.service.MemberDashboard(c.Request().Context(), memberID)
 	if err != nil {
+		if errors.Is(err, ErrNotApproved) {
+			return response.Error(c, http.StatusForbidden, err.Error())
+		}
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
@@ -53,6 +56,8 @@ func (h *Handler) CastVote(c echo.Context) error {
 
 	if err := h.service.CastVote(c.Request().Context(), memberID, req.KandidatID); err != nil {
 		switch {
+		case errors.Is(err, ErrNotApproved):
+			return response.Error(c, http.StatusForbidden, err.Error())
 		case errors.Is(err, ErrAlreadyVoted):
 			return response.Error(c, http.StatusConflict, err.Error())
 		case errors.Is(err, ErrPemiluNotActive):

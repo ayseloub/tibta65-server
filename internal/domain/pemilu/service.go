@@ -9,6 +9,7 @@ import (
 )
 
 var ErrValidation = errors.New("data tidak valid")
+var ErrNotApproved = errors.New("akun kamu belum disetujui admin, silakan lengkapi profil terlebih dahulu")
 
 type KandidatResult struct {
 	Kandidat
@@ -175,6 +176,14 @@ func (s *service) DeleteKandidat(ctx context.Context, id string) error {
 }
 
 func (s *service) MemberDashboard(ctx context.Context, memberID string) (*MemberDashboardResult, error) {
+	approved, err := s.repo.IsMemberApproved(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+	if !approved {
+		return nil, ErrNotApproved
+	}
+
 	settings, err := s.repo.FindSettings(ctx)
 	if err != nil {
 		return nil, err
@@ -220,7 +229,16 @@ func (s *service) MemberDashboard(ctx context.Context, memberID string) (*Member
 }
 
 func (s *service) CastVote(ctx context.Context, memberID, kandidatID string) error {
+	approved, err := s.repo.IsMemberApproved(ctx, memberID)
+	if err != nil {
+		return err
+	}
+	if !approved {
+		return ErrNotApproved
+	}
+
 	settings, err := s.repo.FindSettings(ctx)
+
 	if err != nil {
 		return err
 	}

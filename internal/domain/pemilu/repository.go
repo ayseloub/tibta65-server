@@ -34,6 +34,8 @@ type Repository interface {
 	FindMemberVote(ctx context.Context, memberID string) (*string, error)
 	CreateVote(ctx context.Context, memberID, kandidatID string) error
 	ResetAll(ctx context.Context) error
+
+	IsMemberApproved(ctx context.Context, memberID string) (bool, error)
 }
 
 type repository struct {
@@ -42,6 +44,15 @@ type repository struct {
 
 func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
+}
+
+func (r *repository) IsMemberApproved(ctx context.Context, memberID string) (bool, error) {
+	var approvedAt sql.NullTime
+	err := r.db.GetContext(ctx, &approvedAt, "SELECT approved_at FROM members WHERE id = $1", memberID)
+	if err != nil {
+		return false, err
+	}
+	return approvedAt.Valid, nil
 }
 
 func (r *repository) FindSettings(ctx context.Context) (*Settings, error) {

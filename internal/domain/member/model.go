@@ -18,4 +18,5 @@ type Member struct {
 	CreatedAt          time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt          time.Time  `db:"updated_at" json:"updated_at"`
 	KordaName          *string    `db:"korda_name" json:"korda_name"`
+	ApprovedAt         *time.Time `db:"approved_at" json:"approved_at"`
 }

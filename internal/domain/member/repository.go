@@ -61,7 +61,7 @@ func NewRepository(db *sqlx.DB) Repository {
 const baseSelect = `
 	SELECT m.id, m.full_name, m.email, m.phone, m.address, m.member_number, m.password_hash, m.google_id,
 	       m.avatar_url, m.korda_id, k.name AS korda_name, m.must_change_password, m.email_verified_at,
-	       m.created_at, m.updated_at
+	       m.approved_at, m.created_at, m.updated_at
 	FROM members m
 	LEFT JOIN kordas k ON k.id = m.korda_id
 `
