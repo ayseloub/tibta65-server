@@ -9,10 +9,17 @@ import (
 
 var ErrValidation = errors.New("nama wajib diisi")
 
+type UpsertInput struct {
+	Name      string
+	Phone     string
+	AdminName string
+	Address   string
+}
+
 type Service interface {
 	List(ctx context.Context) ([]Korda, error)
-	Create(ctx context.Context, name string) (*Korda, error)
-	Update(ctx context.Context, id, name string) (*Korda, error)
+	Create(ctx context.Context, in UpsertInput) (*Korda, error)
+	Update(ctx context.Context, id string, in UpsertInput) (*Korda, error)
 	Delete(ctx context.Context, id string) error
 }
 
@@ -24,26 +31,36 @@ func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
 
+func strPtr(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
 func (s *service) List(ctx context.Context) ([]Korda, error) {
 	return s.repo.FindAll(ctx)
 }
 
-func (s *service) Create(ctx context.Context, name string) (*Korda, error) {
-	if name == "" {
+func (s *service) Create(ctx context.Context, in UpsertInput) (*Korda, error) {
+	if in.Name == "" {
 		return nil, ErrValidation
 	}
-	k := &Korda{ID: ulid.Make().String(), Name: name}
+	k := &Korda{
+		ID: ulid.Make().String(), Name: in.Name,
+		Phone: strPtr(in.Phone), AdminName: strPtr(in.AdminName), Address: strPtr(in.Address),
+	}
 	if err := s.repo.Create(ctx, k); err != nil {
 		return nil, err
 	}
 	return k, nil
 }
 
-func (s *service) Update(ctx context.Context, id, name string) (*Korda, error) {
-	if name == "" {
+func (s *service) Update(ctx context.Context, id string, in UpsertInput) (*Korda, error) {
+	if in.Name == "" {
 		return nil, ErrValidation
 	}
-	k := &Korda{ID: id, Name: name}
+	k := &Korda{ID: id, Name: in.Name, Phone: strPtr(in.Phone), AdminName: strPtr(in.AdminName), Address: strPtr(in.Address)}
 	if err := s.repo.Update(ctx, k); err != nil {
 		return nil, err
 	}

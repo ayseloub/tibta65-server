@@ -20,7 +20,10 @@ func NewHandler(service Service) *Handler {
 }
 
 type upsertRequest struct {
-	Name string `json:"name"`
+	Name      string `json:"name"`
+	Phone     string `json:"phone"`
+	AdminName string `json:"admin_name"`
+	Address   string `json:"address"`
 }
 
 func (h *Handler) List(c echo.Context) error {
@@ -37,7 +40,9 @@ func (h *Handler) Create(c echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
 	}
 
-	result, err := h.service.Create(c.Request().Context(), req.Name)
+	result, err := h.service.Create(c.Request().Context(), UpsertInput{
+		Name: req.Name, Phone: req.Phone, AdminName: req.AdminName, Address: req.Address,
+	})
 	if err != nil {
 		return handleError(c, err)
 	}
@@ -51,7 +56,9 @@ func (h *Handler) Update(c echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
 	}
 
-	result, err := h.service.Update(c.Request().Context(), id, req.Name)
+	result, err := h.service.Update(c.Request().Context(), id, UpsertInput{
+		Name: req.Name, Phone: req.Phone, AdminName: req.AdminName, Address: req.Address,
+	})
 	if err != nil {
 		return handleError(c, err)
 	}

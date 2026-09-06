@@ -39,6 +39,8 @@ import (
 	"github.com/Tibta65web/tibta65-server/internal/domain/membermanagement"
 
 	"github.com/Tibta65web/tibta65-server/internal/domain/gallery"
+
+	"github.com/Tibta65web/tibta65-server/internal/domain/sitesettings"
 )
 
 const jwtExpiry = 2 * time.Hour
@@ -139,6 +141,10 @@ func main() {
 	galleryService := gallery.NewService(galleryRepo, fileStorage)
 	galleryHandler := gallery.NewHandler(galleryService)
 
+	siteSettingsRepo := sitesettings.NewRepository(db)
+	siteSettingsService := sitesettings.NewService(siteSettingsRepo)
+	siteSettingsHandler := sitesettings.NewHandler(siteSettingsService)
+
 	e := echo.New()
 	e.HideBanner = true
 
@@ -171,6 +177,7 @@ func main() {
 	pemilu.RegisterRoutes(e, pemiluHandler, cfg.JWTSecret, cfg.MemberJWTSecret)
 	membermanagement.RegisterRoutes(e, memberMgmtHandler, cfg.JWTSecret)
 	gallery.RegisterRoutes(e, galleryHandler, cfg.JWTSecret)
+	sitesettings.RegisterRoutes(e, siteSettingsHandler, cfg.JWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {
