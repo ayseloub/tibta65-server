@@ -26,6 +26,7 @@ type albumRequest struct {
 	EventDate   string `json:"event_date"`
 	KordaID     string `json:"korda_id"`
 	KategoriID  string `json:"kategori_id"`
+	Visibility  string `json:"visibility"`
 }
 
 type highlightRequest struct {
@@ -40,8 +41,9 @@ func (h *Handler) List(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	search := c.QueryParam("search")
+	visibility := c.QueryParam("visibility") // admin boleh filter/lihat semua
 
-	result, err := h.service.List(c.Request().Context(), search, page, limit)
+	result, err := h.service.List(c.Request().Context(), search, visibility, page, limit)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -75,7 +77,7 @@ func (h *Handler) Create(c echo.Context) error {
 	}
 	a, err := h.service.Create(c.Request().Context(), AlbumInput{
 		Title: req.Title, Description: req.Description, EventDate: req.EventDate,
-		KordaID: req.KordaID, KategoriID: req.KategoriID,
+		KordaID: req.KordaID, KategoriID: req.KategoriID, Visibility: req.Visibility,
 	})
 	if err != nil {
 		return handleError(c, err)
@@ -91,7 +93,7 @@ func (h *Handler) Update(c echo.Context) error {
 	}
 	a, err := h.service.Update(c.Request().Context(), id, AlbumInput{
 		Title: req.Title, Description: req.Description, EventDate: req.EventDate,
-		KordaID: req.KordaID, KategoriID: req.KategoriID,
+		KordaID: req.KordaID, KategoriID: req.KategoriID, Visibility: req.Visibility,
 	})
 	if err != nil {
 		return handleError(c, err)
@@ -159,6 +161,50 @@ func (h *Handler) DeletePhoto(c echo.Context) error {
 	return response.Success(c, http.StatusOK, "Foto berhasil dihapus", nil)
 }
 
+func (h *Handler) ListPublic(c echo.Context) error {
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	search := c.QueryParam("search")
+
+	result, err := h.service.List(c.Request().Context(), search, VisibilityPublic, page, limit)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
+}
+
+func (h *Handler) GetPublic(c echo.Context) error {
+	id := c.Param("id")
+	result, err := h.service.Get(c.Request().Context(), id)
+	if err != nil {
+		return handleError(c, err)
+	}
+	if result.Visibility != VisibilityPublic {
+		return response.Error(c, http.StatusNotFound, "Album tidak ditemukan")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
+}
+
+func (h *Handler) ListInternal(c echo.Context) error {
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+
+	result, err := h.service.List(c.Request().Context(), "", VisibilityInternal, page, limit)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
+}
+
+func (h *Handler) GetInternal(c echo.Context) error {
+	id := c.Param("id")
+	result, err := h.service.Get(c.Request().Context(), id)
+	if err != nil {
+		return handleError(c, err)
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
+}
+
 func handleError(c echo.Context, err error) error {
 	switch {
 	case errors.Is(err, ErrValidation):
@@ -174,15 +220,17 @@ func handleError(c echo.Context, err error) error {
 	}
 }
 
-func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret string) {
-	e.GET("/api/gallery", h.List)
+func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret, memberJWTSecret string) {
+	e.GET("/api/gallery", h.ListPublic)
 	e.GET("/api/gallery/highlight", h.GetHighlight)
-	e.GET("/api/gallery/:id", h.Get)
+	e.GET("/api/gallery/:id", h.GetPublic)
 
 	group := e.Group("/api/admin/gallery",
 		appMiddleware.RequireAuth(jwtSecret),
 		appMiddleware.RequireRole(auth.RoleAdmin, auth.RoleSuperAdmin),
 	)
+	group.GET("", h.List)
+	group.GET("/:id", h.Get)
 	group.POST("", h.Create)
 	group.PUT("/:id", h.Update)
 	group.DELETE("/:id", h.Delete)
@@ -190,4 +238,8 @@ func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret string) {
 	group.POST("/:id/photos", h.AddPhoto)
 	group.PUT("/photos/:photoId", h.UpdatePhotoCaption)
 	group.DELETE("/photos/:photoId", h.DeletePhoto)
+
+	memberGroup := e.Group("/api/member/gallery", appMiddleware.RequireMemberAuth(memberJWTSecret))
+	memberGroup.GET("", h.ListInternal)
+	memberGroup.GET("/:id", h.GetInternal)
 }

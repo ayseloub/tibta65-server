@@ -6,7 +6,7 @@ import (
 	appMiddleware "github.com/Tibta65web/tibta65-server/pkg/middleware"
 )
 
-func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret string) {
+func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret, memberJWTSecret string) {
 	admin := e.Group("/api/admin/berita", appMiddleware.RequireAuth(jwtSecret))
 	admin.GET("/stats", h.Stats)
 	admin.POST("", h.Create)
@@ -20,4 +20,8 @@ func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret string) {
 	public.GET("/highlight", h.GetHighlightPublic)
 	public.GET("/:slug", h.GetBySlugPublic)
 	public.GET("", h.ListPublic)
+
+	member := e.Group("/api/member/berita", appMiddleware.RequireMemberAuth(memberJWTSecret))
+	member.GET("", h.ListMember)
+	member.GET("/:slug", h.GetMember)
 }

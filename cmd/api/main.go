@@ -182,15 +182,15 @@ func main() {
 	achievement.RegisterRoutes(e, achievementHandler, cfg.JWTSecret)
 	korda.RegisterRoutes(e, kordaHandler, cfg.JWTSecret)
 	kategori.RegisterRoutes(e, kategoriHandler, cfg.JWTSecret)
-	kegiatan.RegisterRoutes(e, kegiatanHandler, cfg.JWTSecret)
+	kegiatan.RegisterRoutes(e, kegiatanHandler, cfg.JWTSecret, cfg.MemberJWTSecret)
 	adminmanagement.RegisterRoutes(e, adminMgmtHandler, cfg.JWTSecret)
 	member.RegisterRoutes(e, memberHandler, cfg.MemberJWTSecret)
 	pemilu.RegisterRoutes(e, pemiluHandler, cfg.JWTSecret, cfg.MemberJWTSecret)
 	membermanagement.RegisterRoutes(e, memberMgmtHandler, cfg.JWTSecret)
-	gallery.RegisterRoutes(e, galleryHandler, cfg.JWTSecret)
+	gallery.RegisterRoutes(e, galleryHandler, cfg.JWTSecret, cfg.MemberJWTSecret)
 	sitesettings.RegisterRoutes(e, siteSettingsHandler, cfg.JWTSecret)
 	ticket.RegisterRoutes(e, ticketHandler, cfg.MemberJWTSecret, cfg.JWTSecret)
-	berita.RegisterRoutes(e, beritaHandler, cfg.JWTSecret)
+	berita.RegisterRoutes(e, beritaHandler, cfg.JWTSecret, cfg.MemberJWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {

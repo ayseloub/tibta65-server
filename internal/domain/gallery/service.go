@@ -15,6 +15,11 @@ var ErrValidation = errors.New("data tidak valid")
 
 const uploadFolder = "gallery"
 
+const (
+	VisibilityPublic   = "public"
+	VisibilityInternal = "internal"
+)
+
 type ListResult struct {
 	Items      []Album `json:"items"`
 	Page       int     `json:"page"`
@@ -29,10 +34,11 @@ type AlbumInput struct {
 	EventDate   string // format "2006-01-02"
 	KordaID     string
 	KategoriID  string
+	Visibility  string
 }
 
 type Service interface {
-	List(ctx context.Context, search string, page, limit int) (*ListResult, error)
+	List(ctx context.Context, search, visibility string, page, limit int) (*ListResult, error)
 	Get(ctx context.Context, id string) (*AlbumDetail, error)
 	GetHighlight(ctx context.Context) (*AlbumDetail, error)
 	Create(ctx context.Context, in AlbumInput) (*Album, error)
@@ -54,7 +60,11 @@ func NewService(repo Repository, storage storage.Storage) Service {
 	return &service{repo: repo, storage: storage}
 }
 
-func (s *service) List(ctx context.Context, search string, page, limit int) (*ListResult, error) {
+func validateVisibility(v string) bool {
+	return v == VisibilityPublic || v == VisibilityInternal
+}
+
+func (s *service) List(ctx context.Context, search, visibility string, page, limit int) (*ListResult, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -62,7 +72,7 @@ func (s *service) List(ctx context.Context, search string, page, limit int) (*Li
 		limit = 8
 	}
 
-	items, total, err := s.repo.FindAll(ctx, ListFilter{Search: search, Page: page, Limit: limit})
+	items, total, err := s.repo.FindAll(ctx, ListFilter{Search: search, Visibility: visibility, Page: page, Limit: limit})
 	if err != nil {
 		return nil, err
 	}
@@ -95,8 +105,12 @@ func (s *service) GetHighlight(ctx context.Context) (*AlbumDetail, error) {
 	return &AlbumDetail{Album: *album, Photos: photos}, nil
 }
 
-func parseAlbumInput(in AlbumInput) (title, description string, eventDate time.Time, kordaID, kategoriID *string, err error) {
+func parseAlbumInput(in AlbumInput) (title, description string, eventDate time.Time, kordaID, kategoriID *string, visibility string, err error) {
 	if in.Title == "" || in.Description == "" || in.EventDate == "" {
+		err = ErrValidation
+		return
+	}
+	if !validateVisibility(in.Visibility) {
 		err = ErrValidation
 		return
 	}
@@ -114,18 +128,18 @@ func parseAlbumInput(in AlbumInput) (title, description string, eventDate time.T
 		kategoriID = &in.KategoriID
 	}
 
-	return in.Title, in.Description, eventDate, kordaID, kategoriID, nil
+	return in.Title, in.Description, eventDate, kordaID, kategoriID, in.Visibility, nil
 }
 
 func (s *service) Create(ctx context.Context, in AlbumInput) (*Album, error) {
-	title, description, eventDate, kordaID, kategoriID, err := parseAlbumInput(in)
+	title, description, eventDate, kordaID, kategoriID, visibility, err := parseAlbumInput(in)
 	if err != nil {
 		return nil, err
 	}
 
 	a := &Album{
 		ID: ulid.Make().String(), Title: title, Description: description,
-		EventDate: eventDate, KordaID: kordaID, KategoriID: kategoriID,
+		EventDate: eventDate, KordaID: kordaID, KategoriID: kategoriID, Visibility: visibility,
 	}
 
 	if err := s.repo.Create(ctx, a); err != nil {
@@ -135,12 +149,12 @@ func (s *service) Create(ctx context.Context, in AlbumInput) (*Album, error) {
 }
 
 func (s *service) Update(ctx context.Context, id string, in AlbumInput) (*Album, error) {
-	title, description, eventDate, kordaID, kategoriID, err := parseAlbumInput(in)
+	title, description, eventDate, kordaID, kategoriID, visibility, err := parseAlbumInput(in)
 	if err != nil {
 		return nil, err
 	}
 
-	a := &Album{ID: id, Title: title, Description: description, EventDate: eventDate, KordaID: kordaID, KategoriID: kategoriID}
+	a := &Album{ID: id, Title: title, Description: description, EventDate: eventDate, KordaID: kordaID, KategoriID: kategoriID, Visibility: visibility}
 	if err := s.repo.Update(ctx, a); err != nil {
 		return nil, err
 	}
@@ -157,9 +171,6 @@ func (s *service) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	// Hapus album di database duluan, BARU hapus file fisiknya —
-	// kalau dibalik dan hapus DB-nya gagal, kita udah kepalang hapus file
-	// padahal record-nya masih "hidup" (nunjuk ke file yang udah gak ada).
 	for _, p := range photos {
 		_ = s.storage.Delete(ctx, p.ImageURL)
 	}

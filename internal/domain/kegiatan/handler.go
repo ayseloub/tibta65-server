@@ -28,6 +28,7 @@ func (h *Handler) List(c echo.Context) error {
 		Search:     c.QueryParam("search"),
 		KordaID:    c.QueryParam("korda_id"),
 		KategoriID: c.QueryParam("kategori_id"),
+		Visibility: c.QueryParam("visibility"),
 		Page:       page,
 		Limit:      limit,
 	}
@@ -61,6 +62,7 @@ func (h *Handler) Create(c echo.Context) error {
 		KategoriID:  c.FormValue("kategori_id"),
 		Location:    c.FormValue("location"),
 		Description: c.FormValue("description"),
+		Visibility:  c.FormValue("visibility"),
 		Image:       file,
 	}
 
@@ -83,6 +85,7 @@ func (h *Handler) Update(c echo.Context) error {
 		KategoriID:  c.FormValue("kategori_id"),
 		Location:    c.FormValue("location"),
 		Description: c.FormValue("description"),
+		Visibility:  c.FormValue("visibility"),
 		Image:       file,
 	}
 
@@ -101,6 +104,70 @@ func (h *Handler) Delete(c echo.Context) error {
 	return response.Success(c, http.StatusOK, "Kegiatan berhasil dihapus", nil)
 }
 
+func (h *Handler) ListPublic(c echo.Context) error {
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+
+	f := ListFilter{
+		Search:     c.QueryParam("search"),
+		KordaID:    c.QueryParam("korda_id"),
+		KategoriID: c.QueryParam("kategori_id"),
+		Visibility: VisibilityPublic,
+		Page:       page,
+		Limit:      limit,
+	}
+
+	result, err := h.service.List(c.Request().Context(), f)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
+}
+
+func (h *Handler) GetPublic(c echo.Context) error {
+	slugParam := c.Param("slug")
+	k, err := h.service.Get(c.Request().Context(), slugParam)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
+		}
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	if k.Visibility != VisibilityPublic {
+		return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", k)
+}
+
+func (h *Handler) ListInternal(c echo.Context) error {
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+
+	f := ListFilter{
+		Visibility: VisibilityInternal,
+		Page:       page,
+		Limit:      limit,
+	}
+
+	result, err := h.service.List(c.Request().Context(), f)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
+}
+
+func (h *Handler) GetInternal(c echo.Context) error {
+	slugParam := c.Param("slug")
+	k, err := h.service.Get(c.Request().Context(), slugParam)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
+		}
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", k)
+}
+
 func handleError(c echo.Context, err error) error {
 	switch {
 	case errors.Is(err, ErrValidation):
@@ -114,9 +181,9 @@ func handleError(c echo.Context, err error) error {
 	}
 }
 
-func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret string) {
-	e.GET("/api/kegiatan", h.List)
-	e.GET("/api/kegiatan/:slug", h.Get)
+func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret, memberJWTSecret string) {
+	e.GET("/api/kegiatan", h.ListPublic)
+	e.GET("/api/kegiatan/:slug", h.GetPublic)
 
 	adminGroup := e.Group("/api/admin/kegiatan",
 		appMiddleware.RequireAuth(jwtSecret),
@@ -127,4 +194,8 @@ func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret string) {
 	adminGroup.POST("", h.Create)
 	adminGroup.PUT("/:slug", h.Update)
 	adminGroup.DELETE("/:slug", h.Delete)
+
+	memberGroup := e.Group("/api/member/kegiatan", appMiddleware.RequireMemberAuth(memberJWTSecret))
+	memberGroup.GET("", h.ListInternal)
+	memberGroup.GET("/:slug", h.GetInternal)
 }

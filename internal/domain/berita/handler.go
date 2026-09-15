@@ -56,6 +56,43 @@ func (h *Handler) Create(c echo.Context) error {
 	return response.Success(c, http.StatusCreated, "Berita berhasil dibuat", result)
 }
 
+func (h *Handler) ListMember(c echo.Context) error {
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+
+	items, total, err := h.service.FindAll(c.Request().Context(), ListFilter{
+		Status:     StatusPublished,
+		Visibility: VisibilityInternal,
+		Page:       page,
+		Limit:      limit,
+	})
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", map[string]interface{}{
+		"items": items, "page": page, "limit": limit, "total": total,
+		"total_pages": (total + limit - 1) / limit,
+	})
+}
+
+func (h *Handler) GetMember(c echo.Context) error {
+	slug := c.Param("slug")
+	result, err := h.service.FindBySlugMember(c.Request().Context(), slug)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return response.Error(c, http.StatusNotFound, "Berita tidak ditemukan")
+		}
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
+}
+
 func (h *Handler) Update(c echo.Context) error {
 	id := c.Param("id")
 
@@ -166,8 +203,6 @@ func (h *Handler) ToggleHighlight(c echo.Context) error {
 	}
 	return response.Success(c, http.StatusOK, "Highlight berhasil diperbarui", result)
 }
-
-// ===== Public =====
 
 func (h *Handler) GetHighlightPublic(c echo.Context) error {
 	result, err := h.service.FindHighlightPublic(c.Request().Context())

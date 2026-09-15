@@ -53,6 +53,7 @@ type Service interface {
 	FindHighlightPublic(ctx context.Context) (*Berita, error)
 	FindAllPublic(ctx context.Context, page, limit int) ([]Berita, int, error)
 	FindBySlugPublic(ctx context.Context, slug string) (*Berita, error)
+	FindBySlugMember(ctx context.Context, slug string) (*Berita, error)
 }
 
 type service struct {
@@ -222,6 +223,17 @@ func (s *service) ToggleHighlight(ctx context.Context, id string, enable bool) (
 		}
 	}
 	return s.repo.FindByID(ctx, id)
+}
+
+func (s *service) FindBySlugMember(ctx context.Context, slug string) (*Berita, error) {
+	b, err := s.repo.FindBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	if b.Status != StatusPublished {
+		return nil, ErrNotFound
+	}
+	return b, nil
 }
 
 func (s *service) FindHighlightPublic(ctx context.Context) (*Berita, error) {

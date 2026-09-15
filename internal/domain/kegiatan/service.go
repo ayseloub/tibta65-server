@@ -16,6 +16,11 @@ var ErrValidation = errors.New("data tidak valid")
 
 const uploadFolder = "kegiatan"
 
+const (
+	VisibilityPublic   = "public"
+	VisibilityInternal = "internal"
+)
+
 type ListResult struct {
 	Items      []Kegiatan `json:"items"`
 	Page       int        `json:"page"`
@@ -31,6 +36,7 @@ type CreateInput struct {
 	KategoriID  string
 	Location    string
 	Description string
+	Visibility  string
 	Image       *multipart.FileHeader
 }
 
@@ -42,6 +48,7 @@ type UpdateInput struct {
 	KategoriID  string
 	Location    string
 	Description string
+	Visibility  string
 	Image       *multipart.FileHeader
 }
 
@@ -60,6 +67,10 @@ type service struct {
 
 func NewService(repo Repository, storage storage.Storage) Service {
 	return &service{repo: repo, storage: storage}
+}
+
+func validateVisibility(v string) bool {
+	return v == VisibilityPublic || v == VisibilityInternal
 }
 
 func (s *service) List(ctx context.Context, f ListFilter) (*ListResult, error) {
@@ -93,6 +104,9 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Kegiatan, error)
 	if in.Image == nil {
 		return nil, errors.New("gambar wajib diupload")
 	}
+	if !validateVisibility(in.Visibility) {
+		return nil, ErrValidation
+	}
 
 	date, err := time.Parse("2006-01-02", in.Date)
 	if err != nil {
@@ -114,6 +128,7 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Kegiatan, error)
 		Location:    in.Location,
 		ImageURL:    imageURL,
 		Description: in.Description,
+		Visibility:  in.Visibility,
 	}
 
 	if err := s.repo.Create(ctx, k); err != nil {
@@ -126,6 +141,9 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Kegiatan, error)
 
 func (s *service) Update(ctx context.Context, in UpdateInput) (*Kegiatan, error) {
 	if in.Title == "" || in.Date == "" || in.KordaID == "" || in.KategoriID == "" || in.Location == "" || in.Description == "" {
+		return nil, ErrValidation
+	}
+	if !validateVisibility(in.Visibility) {
 		return nil, ErrValidation
 	}
 
@@ -150,7 +168,8 @@ func (s *service) Update(ctx context.Context, in UpdateInput) (*Kegiatan, error)
 
 	k := &Kegiatan{
 		Slug: in.Slug, Title: in.Title, Date: date, KordaID: in.KordaID,
-		KategoriID: in.KategoriID, Location: in.Location, ImageURL: imageURL, Description: in.Description,
+		KategoriID: in.KategoriID, Location: in.Location, ImageURL: imageURL,
+		Description: in.Description, Visibility: in.Visibility,
 	}
 
 	if err := s.repo.Update(ctx, k); err != nil {

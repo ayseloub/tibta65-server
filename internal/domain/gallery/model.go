@@ -12,6 +12,7 @@ type Album struct {
 	KategoriID    *string   `db:"kategori_id" json:"kategori_id"`
 	KategoriName  *string   `db:"kategori_name" json:"kategori_name"`
 	IsHighlight   bool      `db:"is_highlight" json:"is_highlight"`
+	Visibility    string    `db:"visibility" json:"visibility"`
 	PhotoCount    int       `db:"photo_count" json:"photo_count"`
 	CoverImageURL *string   `db:"cover_image_url" json:"cover_image_url"`
 	CreatedAt     time.Time `db:"created_at" json:"created_at"`

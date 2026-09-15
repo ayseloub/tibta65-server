@@ -17,9 +17,10 @@ var (
 const MaxPhotosPerAlbum = 30
 
 type ListFilter struct {
-	Search string
-	Page   int
-	Limit  int
+	Search     string
+	Visibility string
+	Page       int
+	Limit      int
 }
 
 type Repository interface {
@@ -50,7 +51,7 @@ func NewRepository(db *sqlx.DB) Repository {
 const albumSelect = `
 	SELECT
 		a.id, a.title, a.description, a.event_date, a.korda_id, ko.name AS korda_name,
-		a.kategori_id, kt.name AS kategori_name, a.is_highlight, a.created_at, a.updated_at,
+		a.kategori_id, kt.name AS kategori_name, a.is_highlight, a.visibility, a.created_at, a.updated_at,
 		COALESCE((SELECT COUNT(*) FROM gallery_photos p WHERE p.album_id = a.id), 0) AS photo_count,
 		(SELECT p.image_url FROM gallery_photos p WHERE p.album_id = a.id ORDER BY p.sort_order ASC LIMIT 1) AS cover_image_url
 	FROM gallery_albums a
@@ -66,6 +67,11 @@ func (r *repository) FindAll(ctx context.Context, f ListFilter) ([]Album, int, e
 	if f.Search != "" {
 		where += " AND a.title ILIKE $" + itoa(argPos)
 		args = append(args, "%"+f.Search+"%")
+		argPos++
+	}
+	if f.Visibility != "" {
+		where += " AND a.visibility = $" + itoa(argPos)
+		args = append(args, f.Visibility)
 		argPos++
 	}
 
@@ -115,22 +121,22 @@ func (r *repository) FindHighlight(ctx context.Context) (*Album, error) {
 
 func (r *repository) Create(ctx context.Context, a *Album) error {
 	query := `
-		INSERT INTO gallery_albums (id, title, description, event_date, korda_id, kategori_id)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO gallery_albums (id, title, description, event_date, korda_id, kategori_id, visibility)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING created_at, updated_at
 	`
-	return r.db.QueryRowContext(ctx, query, a.ID, a.Title, a.Description, a.EventDate, a.KordaID, a.KategoriID).
+	return r.db.QueryRowContext(ctx, query, a.ID, a.Title, a.Description, a.EventDate, a.KordaID, a.KategoriID, a.Visibility).
 		Scan(&a.CreatedAt, &a.UpdatedAt)
 }
 
 func (r *repository) Update(ctx context.Context, a *Album) error {
 	query := `
 		UPDATE gallery_albums
-		SET title = $1, description = $2, event_date = $3, korda_id = $4, kategori_id = $5, updated_at = now()
-		WHERE id = $6
+		SET title = $1, description = $2, event_date = $3, korda_id = $4, kategori_id = $5, visibility = $6, updated_at = now()
+		WHERE id = $7
 		RETURNING updated_at
 	`
-	err := r.db.QueryRowContext(ctx, query, a.Title, a.Description, a.EventDate, a.KordaID, a.KategoriID, a.ID).
+	err := r.db.QueryRowContext(ctx, query, a.Title, a.Description, a.EventDate, a.KordaID, a.KategoriID, a.Visibility, a.ID).
 		Scan(&a.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -150,9 +156,6 @@ func (r *repository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// SetHighlight — transaksi 2 langkah: matiin highlight lama dulu, baru nyalain yang baru.
-// Urutan ini PENTING, biar gak pernah kebentur partial unique index yang kita bikin di migration
-// (kalau langsung set true tanpa reset dulu, dan ada row true lain, database bakal nolak).
 func (r *repository) SetHighlight(ctx context.Context, albumID string, highlight bool) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {

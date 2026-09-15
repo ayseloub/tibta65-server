@@ -20,6 +20,7 @@ type ListFilter struct {
 	Search     string
 	KordaID    string
 	KategoriID string
+	Visibility string
 	Page       int
 	Limit      int
 }
@@ -44,7 +45,7 @@ const baseSelect = `
 	SELECT
 		k.id, k.slug, k.title, k.date, k.korda_id, ko.name AS korda_name,
 		k.kategori_id, kt.name AS kategori_name, k.location, k.image_url,
-		k.description, k.created_at, k.updated_at
+		k.description, k.visibility, k.created_at, k.updated_at
 	FROM kegiatans k
 	JOIN kordas ko ON ko.id = k.korda_id
 	JOIN kategoris kt ON kt.id = k.kategori_id
@@ -68,6 +69,11 @@ func (r *repository) FindAll(ctx context.Context, f ListFilter) ([]Kegiatan, int
 	if f.KategoriID != "" {
 		where += fmt.Sprintf(" AND k.kategori_id = $%d", argPos)
 		args = append(args, f.KategoriID)
+		argPos++
+	}
+	if f.Visibility != "" {
+		where += fmt.Sprintf(" AND k.visibility = $%d", argPos)
+		args = append(args, f.Visibility)
 		argPos++
 	}
 
@@ -107,12 +113,12 @@ func (r *repository) FindBySlug(ctx context.Context, slug string) (*Kegiatan, er
 
 func (r *repository) Create(ctx context.Context, k *Kegiatan) error {
 	query := `
-		INSERT INTO kegiatans (id, slug, title, date, korda_id, kategori_id, location, image_url, description)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO kegiatans (id, slug, title, date, korda_id, kategori_id, location, image_url, description, visibility)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING created_at, updated_at
 	`
 	err := r.db.QueryRowContext(ctx, query,
-		k.ID, k.Slug, k.Title, k.Date, k.KordaID, k.KategoriID, k.Location, k.ImageURL, k.Description,
+		k.ID, k.Slug, k.Title, k.Date, k.KordaID, k.KategoriID, k.Location, k.ImageURL, k.Description, k.Visibility,
 	).Scan(&k.CreatedAt, &k.UpdatedAt)
 
 	if isDuplicateKeyError(err) {
@@ -125,12 +131,12 @@ func (r *repository) Update(ctx context.Context, k *Kegiatan) error {
 	query := `
 		UPDATE kegiatans
 		SET title = $1, date = $2, korda_id = $3, kategori_id = $4,
-		    location = $5, image_url = $6, description = $7, updated_at = now()
-		WHERE slug = $8
+		    location = $5, image_url = $6, description = $7, visibility = $8, updated_at = now()
+		WHERE slug = $9
 		RETURNING updated_at
 	`
 	err := r.db.QueryRowContext(ctx, query,
-		k.Title, k.Date, k.KordaID, k.KategoriID, k.Location, k.ImageURL, k.Description, k.Slug,
+		k.Title, k.Date, k.KordaID, k.KategoriID, k.Location, k.ImageURL, k.Description, k.Visibility, k.Slug,
 	).Scan(&k.UpdatedAt)
 
 	if errors.Is(err, sql.ErrNoRows) {

@@ -14,6 +14,7 @@ type Kegiatan struct {
 	Location     string    `db:"location" json:"location"`
 	ImageURL     string    `db:"image_url" json:"image_url"`
 	Description  string    `db:"description" json:"description"`
+	Visibility   string    `db:"visibility" json:"visibility"`
 	CreatedAt    time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt    time.Time `db:"updated_at" json:"updated_at"`
 }
