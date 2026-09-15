@@ -31,14 +31,16 @@ type ListResult struct {
 type AlbumInput struct {
 	Title       string
 	Description string
-	EventDate   string // format "2006-01-02"
+	EventDate   string
 	KordaID     string
 	KategoriID  string
 	Visibility  string
+	PublishAt   *time.Time
+	ExpireAt    *time.Time
 }
 
 type Service interface {
-	List(ctx context.Context, search, visibility string, page, limit int) (*ListResult, error)
+	List(ctx context.Context, search, visibility string, scheduled bool, page, limit int) (*ListResult, error)
 	Get(ctx context.Context, id string) (*AlbumDetail, error)
 	GetHighlight(ctx context.Context) (*AlbumDetail, error)
 	Create(ctx context.Context, in AlbumInput) (*Album, error)
@@ -64,7 +66,7 @@ func validateVisibility(v string) bool {
 	return v == VisibilityPublic || v == VisibilityInternal
 }
 
-func (s *service) List(ctx context.Context, search, visibility string, page, limit int) (*ListResult, error) {
+func (s *service) List(ctx context.Context, search, visibility string, scheduled bool, page, limit int) (*ListResult, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -72,7 +74,7 @@ func (s *service) List(ctx context.Context, search, visibility string, page, lim
 		limit = 8
 	}
 
-	items, total, err := s.repo.FindAll(ctx, ListFilter{Search: search, Visibility: visibility, Page: page, Limit: limit})
+	items, total, err := s.repo.FindAll(ctx, ListFilter{Search: search, Visibility: visibility, Scheduled: scheduled, Page: page, Limit: limit})
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +116,10 @@ func parseAlbumInput(in AlbumInput) (title, description string, eventDate time.T
 		err = ErrValidation
 		return
 	}
+	if in.PublishAt != nil && in.ExpireAt != nil && !in.ExpireAt.After(*in.PublishAt) {
+		err = errors.New("waktu berakhir harus setelah waktu terbit")
+		return
+	}
 
 	eventDate, err = time.Parse("2006-01-02", in.EventDate)
 	if err != nil {
@@ -140,6 +146,7 @@ func (s *service) Create(ctx context.Context, in AlbumInput) (*Album, error) {
 	a := &Album{
 		ID: ulid.Make().String(), Title: title, Description: description,
 		EventDate: eventDate, KordaID: kordaID, KategoriID: kategoriID, Visibility: visibility,
+		PublishAt: in.PublishAt, ExpireAt: in.ExpireAt,
 	}
 
 	if err := s.repo.Create(ctx, a); err != nil {
@@ -154,7 +161,11 @@ func (s *service) Update(ctx context.Context, id string, in AlbumInput) (*Album,
 		return nil, err
 	}
 
-	a := &Album{ID: id, Title: title, Description: description, EventDate: eventDate, KordaID: kordaID, KategoriID: kategoriID, Visibility: visibility}
+	a := &Album{
+		ID: id, Title: title, Description: description, EventDate: eventDate,
+		KordaID: kordaID, KategoriID: kategoriID, Visibility: visibility,
+		PublishAt: in.PublishAt, ExpireAt: in.ExpireAt,
+	}
 	if err := s.repo.Update(ctx, a); err != nil {
 		return nil, err
 	}

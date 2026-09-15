@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -27,6 +28,8 @@ type albumRequest struct {
 	KordaID     string `json:"korda_id"`
 	KategoriID  string `json:"kategori_id"`
 	Visibility  string `json:"visibility"`
+	PublishAt   string `json:"publish_at"`
+	ExpireAt    string `json:"expire_at"`
 }
 
 type highlightRequest struct {
@@ -37,13 +40,41 @@ type captionRequest struct {
 	Caption string `json:"caption"`
 }
 
+func parseScheduleField(raw string) (*time.Time, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	t, err := time.Parse("2006-01-02T15:04", raw)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (req albumRequest) toAlbumInput() (AlbumInput, error) {
+	publishAt, err := parseScheduleField(req.PublishAt)
+	if err != nil {
+		return AlbumInput{}, errors.New("format waktu terbit tidak valid")
+	}
+	expireAt, err := parseScheduleField(req.ExpireAt)
+	if err != nil {
+		return AlbumInput{}, errors.New("format waktu berakhir tidak valid")
+	}
+
+	return AlbumInput{
+		Title: req.Title, Description: req.Description, EventDate: req.EventDate,
+		KordaID: req.KordaID, KategoriID: req.KategoriID, Visibility: req.Visibility,
+		PublishAt: publishAt, ExpireAt: expireAt,
+	}, nil
+}
+
 func (h *Handler) List(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	search := c.QueryParam("search")
 	visibility := c.QueryParam("visibility") // admin boleh filter/lihat semua
 
-	result, err := h.service.List(c.Request().Context(), search, visibility, page, limit)
+	result, err := h.service.List(c.Request().Context(), search, visibility, false, page, limit)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -75,10 +106,11 @@ func (h *Handler) Create(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
 	}
-	a, err := h.service.Create(c.Request().Context(), AlbumInput{
-		Title: req.Title, Description: req.Description, EventDate: req.EventDate,
-		KordaID: req.KordaID, KategoriID: req.KategoriID, Visibility: req.Visibility,
-	})
+	in, err := req.toAlbumInput()
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, err.Error())
+	}
+	a, err := h.service.Create(c.Request().Context(), in)
 	if err != nil {
 		return handleError(c, err)
 	}
@@ -91,10 +123,11 @@ func (h *Handler) Update(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
 	}
-	a, err := h.service.Update(c.Request().Context(), id, AlbumInput{
-		Title: req.Title, Description: req.Description, EventDate: req.EventDate,
-		KordaID: req.KordaID, KategoriID: req.KategoriID, Visibility: req.Visibility,
-	})
+	in, err := req.toAlbumInput()
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, err.Error())
+	}
+	a, err := h.service.Update(c.Request().Context(), id, in)
 	if err != nil {
 		return handleError(c, err)
 	}
@@ -166,7 +199,7 @@ func (h *Handler) ListPublic(c echo.Context) error {
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	search := c.QueryParam("search")
 
-	result, err := h.service.List(c.Request().Context(), search, VisibilityPublic, page, limit)
+	result, err := h.service.List(c.Request().Context(), search, VisibilityPublic, true, page, limit)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -182,6 +215,12 @@ func (h *Handler) GetPublic(c echo.Context) error {
 	if result.Visibility != VisibilityPublic {
 		return response.Error(c, http.StatusNotFound, "Album tidak ditemukan")
 	}
+	if result.PublishAt != nil && result.PublishAt.After(time.Now()) {
+		return response.Error(c, http.StatusNotFound, "Album tidak ditemukan")
+	}
+	if result.ExpireAt != nil && !result.ExpireAt.After(time.Now()) {
+		return response.Error(c, http.StatusNotFound, "Album tidak ditemukan")
+	}
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
 }
 
@@ -189,7 +228,7 @@ func (h *Handler) ListInternal(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 
-	result, err := h.service.List(c.Request().Context(), "", VisibilityInternal, page, limit)
+	result, err := h.service.List(c.Request().Context(), "", VisibilityInternal, true, page, limit)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -201,6 +240,15 @@ func (h *Handler) GetInternal(c echo.Context) error {
 	result, err := h.service.Get(c.Request().Context(), id)
 	if err != nil {
 		return handleError(c, err)
+	}
+	if result.Visibility != VisibilityInternal {
+		return response.Error(c, http.StatusNotFound, "Album tidak ditemukan")
+	}
+	if result.PublishAt != nil && result.PublishAt.After(time.Now()) {
+		return response.Error(c, http.StatusNotFound, "Album tidak ditemukan")
+	}
+	if result.ExpireAt != nil && !result.ExpireAt.After(time.Now()) {
+		return response.Error(c, http.StatusNotFound, "Album tidak ditemukan")
 	}
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
 }
