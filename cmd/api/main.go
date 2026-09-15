@@ -17,6 +17,7 @@ import (
 	"github.com/Tibta65web/tibta65-server/internal/domain/auth"
 	"github.com/Tibta65web/tibta65-server/internal/domain/backgroundcontent"
 	"github.com/Tibta65web/tibta65-server/internal/domain/berita"
+	"github.com/Tibta65web/tibta65-server/internal/domain/heroslide"
 	"github.com/Tibta65web/tibta65-server/pkg/database"
 	"github.com/Tibta65web/tibta65-server/pkg/logger"
 
@@ -156,6 +157,10 @@ func main() {
 	beritaService := berita.NewService(beritaRepo, fileStorage)
 	beritaHandler := berita.NewHandler(beritaService)
 
+	heroSlideRepo := heroslide.NewRepository(db)
+	heroSlideService := heroslide.NewService(heroSlideRepo, fileStorage)
+	heroSlideHandler := heroslide.NewHandler(heroSlideService)
+
 	e := echo.New()
 	e.HideBanner = true
 
@@ -191,6 +196,7 @@ func main() {
 	sitesettings.RegisterRoutes(e, siteSettingsHandler, cfg.JWTSecret)
 	ticket.RegisterRoutes(e, ticketHandler, cfg.MemberJWTSecret, cfg.JWTSecret)
 	berita.RegisterRoutes(e, beritaHandler, cfg.JWTSecret, cfg.MemberJWTSecret)
+	heroslide.RegisterRoutes(e, heroSlideHandler, cfg.JWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {
