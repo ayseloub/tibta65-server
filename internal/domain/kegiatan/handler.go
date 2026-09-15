@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -20,6 +21,30 @@ func NewHandler(service Service) *Handler {
 	return &Handler{service: service}
 }
 
+func parsePublishAt(c echo.Context) (*time.Time, error) {
+	raw := c.FormValue("publish_at")
+	if raw == "" {
+		return nil, nil
+	}
+	t, err := time.Parse("2006-01-02T15:04", raw)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func parseExpireAt(c echo.Context) (*time.Time, error) {
+	raw := c.FormValue("expire_at")
+	if raw == "" {
+		return nil, nil
+	}
+	t, err := time.Parse("2006-01-02T15:04", raw)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func (h *Handler) List(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
@@ -29,6 +54,7 @@ func (h *Handler) List(c echo.Context) error {
 		KordaID:    c.QueryParam("korda_id"),
 		KategoriID: c.QueryParam("kategori_id"),
 		Visibility: c.QueryParam("visibility"),
+		Scheduled:  false,
 		Page:       page,
 		Limit:      limit,
 	}
@@ -55,6 +81,15 @@ func (h *Handler) Get(c echo.Context) error {
 func (h *Handler) Create(c echo.Context) error {
 	file, _ := c.FormFile("image")
 
+	publishAt, err := parsePublishAt(c)
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, "Format waktu terbit tidak valid")
+	}
+	expireAt, err := parseExpireAt(c)
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, "Format waktu berakhir tidak valid")
+	}
+
 	in := CreateInput{
 		Title:       c.FormValue("title"),
 		Date:        c.FormValue("date"),
@@ -63,6 +98,8 @@ func (h *Handler) Create(c echo.Context) error {
 		Location:    c.FormValue("location"),
 		Description: c.FormValue("description"),
 		Visibility:  c.FormValue("visibility"),
+		PublishAt:   publishAt,
+		ExpireAt:    expireAt,
 		Image:       file,
 	}
 
@@ -77,6 +114,15 @@ func (h *Handler) Update(c echo.Context) error {
 	slugParam := c.Param("slug")
 	file, _ := c.FormFile("image")
 
+	publishAt, err := parsePublishAt(c)
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, "Format waktu terbit tidak valid")
+	}
+	expireAt, err := parseExpireAt(c)
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, "Format waktu berakhir tidak valid")
+	}
+
 	in := UpdateInput{
 		Slug:        slugParam,
 		Title:       c.FormValue("title"),
@@ -86,6 +132,8 @@ func (h *Handler) Update(c echo.Context) error {
 		Location:    c.FormValue("location"),
 		Description: c.FormValue("description"),
 		Visibility:  c.FormValue("visibility"),
+		PublishAt:   publishAt,
+		ExpireAt:    expireAt,
 		Image:       file,
 	}
 
@@ -113,6 +161,7 @@ func (h *Handler) ListPublic(c echo.Context) error {
 		KordaID:    c.QueryParam("korda_id"),
 		KategoriID: c.QueryParam("kategori_id"),
 		Visibility: VisibilityPublic,
+		Scheduled:  true,
 		Page:       page,
 		Limit:      limit,
 	}
@@ -136,6 +185,12 @@ func (h *Handler) GetPublic(c echo.Context) error {
 	if k.Visibility != VisibilityPublic {
 		return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
 	}
+	if k.PublishAt != nil && k.PublishAt.After(time.Now()) {
+		return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
+	}
+	if k.ExpireAt != nil && !k.ExpireAt.After(time.Now()) {
+		return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
+	}
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", k)
 }
 
@@ -145,6 +200,7 @@ func (h *Handler) ListInternal(c echo.Context) error {
 
 	f := ListFilter{
 		Visibility: VisibilityInternal,
+		Scheduled:  true,
 		Page:       page,
 		Limit:      limit,
 	}
@@ -164,6 +220,15 @@ func (h *Handler) GetInternal(c echo.Context) error {
 			return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
 		}
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	if k.Visibility != VisibilityInternal {
+		return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
+	}
+	if k.PublishAt != nil && k.PublishAt.After(time.Now()) {
+		return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
+	}
+	if k.ExpireAt != nil && !k.ExpireAt.After(time.Now()) {
+		return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
 	}
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", k)
 }

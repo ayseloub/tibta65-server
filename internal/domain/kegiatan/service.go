@@ -37,6 +37,8 @@ type CreateInput struct {
 	Location    string
 	Description string
 	Visibility  string
+	PublishAt   *time.Time
+	ExpireAt    *time.Time
 	Image       *multipart.FileHeader
 }
 
@@ -49,6 +51,8 @@ type UpdateInput struct {
 	Location    string
 	Description string
 	Visibility  string
+	PublishAt   *time.Time
+	ExpireAt    *time.Time
 	Image       *multipart.FileHeader
 }
 
@@ -107,6 +111,9 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Kegiatan, error)
 	if !validateVisibility(in.Visibility) {
 		return nil, ErrValidation
 	}
+	if in.PublishAt != nil && in.ExpireAt != nil && !in.ExpireAt.After(*in.PublishAt) {
+		return nil, errors.New("waktu berakhir harus setelah waktu terbit")
+	}
 
 	date, err := time.Parse("2006-01-02", in.Date)
 	if err != nil {
@@ -129,6 +136,8 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Kegiatan, error)
 		ImageURL:    imageURL,
 		Description: in.Description,
 		Visibility:  in.Visibility,
+		PublishAt:   in.PublishAt,
+		ExpireAt:    in.ExpireAt,
 	}
 
 	if err := s.repo.Create(ctx, k); err != nil {
@@ -145,6 +154,9 @@ func (s *service) Update(ctx context.Context, in UpdateInput) (*Kegiatan, error)
 	}
 	if !validateVisibility(in.Visibility) {
 		return nil, ErrValidation
+	}
+	if in.PublishAt != nil && in.ExpireAt != nil && !in.ExpireAt.After(*in.PublishAt) {
+		return nil, errors.New("waktu berakhir harus setelah waktu terbit")
 	}
 
 	existing, err := s.repo.FindBySlug(ctx, in.Slug)
@@ -170,6 +182,7 @@ func (s *service) Update(ctx context.Context, in UpdateInput) (*Kegiatan, error)
 		Slug: in.Slug, Title: in.Title, Date: date, KordaID: in.KordaID,
 		KategoriID: in.KategoriID, Location: in.Location, ImageURL: imageURL,
 		Description: in.Description, Visibility: in.Visibility,
+		PublishAt: in.PublishAt, ExpireAt: in.ExpireAt,
 	}
 
 	if err := s.repo.Update(ctx, k); err != nil {
