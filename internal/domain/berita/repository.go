@@ -35,6 +35,8 @@ type Repository interface {
 	FindHighlightPublic(ctx context.Context) (*Berita, error)
 	FindAllPublic(ctx context.Context, page, limit int) ([]Berita, int, error)
 	FindBySlugPublic(ctx context.Context, slug string) (*Berita, error)
+
+	FindAllMember(ctx context.Context, page, limit int) ([]Berita, int, error)
 }
 
 type repository struct {
@@ -47,17 +49,17 @@ func NewRepository(db *sqlx.DB) Repository {
 
 const selectColumns = `
 	id, title, slug, description, image_url, visibility, status, is_highlight,
-	author_id, author_name, event_date, created_at, updated_at
+	author_id, author_name, event_date, publish_at, expire_at, created_at, updated_at
 `
 
 func (r *repository) Create(ctx context.Context, b *Berita) error {
 	query := `
-		INSERT INTO beritas (id, title, slug, description, image_url, visibility, status, author_id, author_name, event_date)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO beritas (id, title, slug, description, image_url, visibility, status, author_id, author_name, event_date, publish_at, expire_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING created_at, updated_at
 	`
 	return r.db.QueryRowContext(ctx, query,
-		b.ID, b.Title, b.Slug, b.Description, b.ImageURL, b.Visibility, b.Status, b.AuthorID, b.AuthorName, b.EventDate,
+		b.ID, b.Title, b.Slug, b.Description, b.ImageURL, b.Visibility, b.Status, b.AuthorID, b.AuthorName, b.EventDate, b.PublishAt, b.ExpireAt,
 	).Scan(&b.CreatedAt, &b.UpdatedAt)
 }
 
@@ -65,12 +67,12 @@ func (r *repository) Update(ctx context.Context, b *Berita) error {
 	query := `
 		UPDATE beritas
 		SET title = $1, slug = $2, description = $3, image_url = $4, visibility = $5,
-		    status = $6, event_date = $7, updated_at = now()
-		WHERE id = $8
+		    status = $6, event_date = $7, publish_at = $8, expire_at = $9, updated_at = now()
+		WHERE id = $10
 		RETURNING updated_at
 	`
 	err := r.db.QueryRowContext(ctx, query,
-		b.Title, b.Slug, b.Description, b.ImageURL, b.Visibility, b.Status, b.EventDate, b.ID,
+		b.Title, b.Slug, b.Description, b.ImageURL, b.Visibility, b.Status, b.EventDate, b.PublishAt, b.ExpireAt, b.ID,
 	).Scan(&b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -212,14 +214,16 @@ func (r *repository) UnsetHighlight(ctx context.Context, id string) error {
 	return nil
 }
 
+const scheduleFilter = " AND (publish_at IS NULL OR publish_at <= now()) AND (expire_at IS NULL OR expire_at > now())"
+
 func (r *repository) FindHighlightPublic(ctx context.Context) (*Berita, error) {
 	var b Berita
 	query := "SELECT " + selectColumns + ` FROM beritas
-		WHERE is_highlight = true AND status = 'published' AND visibility = 'public'
+		WHERE is_highlight = true AND status = 'published' AND visibility = 'public'` + scheduleFilter + `
 		LIMIT 1`
 	if err := r.db.GetContext(ctx, &b, query); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil // gak ada highlight yang aktif, bukan error
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -227,7 +231,7 @@ func (r *repository) FindHighlightPublic(ctx context.Context) (*Berita, error) {
 }
 
 func (r *repository) FindAllPublic(ctx context.Context, page, limit int) ([]Berita, int, error) {
-	where := " WHERE status = 'published' AND visibility = 'public' AND is_highlight = false"
+	where := " WHERE status = 'published' AND visibility = 'public' AND is_highlight = false" + scheduleFilter
 
 	var total int
 	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM beritas"+where); err != nil {
@@ -247,7 +251,7 @@ func (r *repository) FindAllPublic(ctx context.Context, page, limit int) ([]Beri
 func (r *repository) FindBySlugPublic(ctx context.Context, slug string) (*Berita, error) {
 	var b Berita
 	query := "SELECT " + selectColumns + ` FROM beritas
-		WHERE slug = $1 AND status = 'published' AND visibility = 'public'`
+		WHERE slug = $1 AND status = 'published' AND visibility = 'public'` + scheduleFilter
 	if err := r.db.GetContext(ctx, &b, query, slug); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -255,4 +259,22 @@ func (r *repository) FindBySlugPublic(ctx context.Context, slug string) (*Berita
 		return nil, err
 	}
 	return &b, nil
+}
+
+func (r *repository) FindAllMember(ctx context.Context, page, limit int) ([]Berita, int, error) {
+	where := " WHERE status = 'published' AND visibility = 'internal'" + scheduleFilter
+
+	var total int
+	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM beritas"+where); err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * limit
+	items := []Berita{}
+	query := "SELECT " + selectColumns + " FROM beritas" + where +
+		" ORDER BY event_date DESC, created_at DESC LIMIT $1 OFFSET $2"
+	if err := r.db.SelectContext(ctx, &items, query, limit, offset); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
 }

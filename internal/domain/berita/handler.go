@@ -24,12 +24,46 @@ func parseEventDate(c echo.Context) (time.Time, error) {
 	return time.Parse("2006-01-02", c.FormValue("event_date"))
 }
 
+func parsePublishAt(c echo.Context) (*time.Time, error) {
+	raw := c.FormValue("publish_at")
+	if raw == "" {
+		return nil, nil
+	}
+	t, err := time.Parse("2006-01-02T15:04", raw)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func parseExpireAt(c echo.Context) (*time.Time, error) {
+	raw := c.FormValue("expire_at")
+	if raw == "" {
+		return nil, nil
+	}
+	t, err := time.Parse("2006-01-02T15:04", raw)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func (h *Handler) Create(c echo.Context) error {
 	adminID, _ := c.Get(appMiddleware.ContextKeyAdminID).(string)
 
 	eventDate, err := parseEventDate(c)
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "Format tanggal tidak valid")
+	}
+
+	publishAt, err := parsePublishAt(c)
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, "Format waktu terbit tidak valid")
+	}
+
+	expireAt, err := parseExpireAt(c)
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, "Format waktu berakhir tidak valid")
 	}
 
 	fileHeader, err := c.FormFile("image")
@@ -43,6 +77,8 @@ func (h *Handler) Create(c echo.Context) error {
 		Visibility:  c.FormValue("visibility"),
 		Status:      c.FormValue("status"),
 		EventDate:   eventDate,
+		PublishAt:   publishAt,
+		ExpireAt:    expireAt,
 		ImageHeader: fileHeader,
 		AuthorID:    adminID,
 		AuthorName:  c.FormValue("author_name"),
@@ -51,7 +87,7 @@ func (h *Handler) Create(c echo.Context) error {
 		if errors.Is(err, ErrValidation) {
 			return response.Error(c, http.StatusBadRequest, "Data tidak valid, cek kembali form")
 		}
-		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+		return response.Error(c, http.StatusInternalServerError, err.Error())
 	}
 	return response.Success(c, http.StatusCreated, "Berita berhasil dibuat", result)
 }
@@ -66,12 +102,7 @@ func (h *Handler) ListMember(c echo.Context) error {
 		limit = 10
 	}
 
-	items, total, err := h.service.FindAll(c.Request().Context(), ListFilter{
-		Status:     StatusPublished,
-		Visibility: VisibilityInternal,
-		Page:       page,
-		Limit:      limit,
-	})
+	items, total, err := h.service.FindAllMember(c.Request().Context(), page, limit)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -101,6 +132,16 @@ func (h *Handler) Update(c echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Format tanggal tidak valid")
 	}
 
+	publishAt, err := parsePublishAt(c)
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, "Format waktu terbit tidak valid")
+	}
+
+	expireAt, err := parseExpireAt(c)
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, "Format waktu berakhir tidak valid")
+	}
+
 	fileHeader, _ := c.FormFile("image")
 
 	result, err := h.service.Update(c.Request().Context(), id, UpdateInput{
@@ -109,6 +150,8 @@ func (h *Handler) Update(c echo.Context) error {
 		Visibility:  c.FormValue("visibility"),
 		Status:      c.FormValue("status"),
 		EventDate:   eventDate,
+		PublishAt:   publishAt,
+		ExpireAt:    expireAt,
 		ImageHeader: fileHeader,
 	})
 	if err != nil {
@@ -118,7 +161,7 @@ func (h *Handler) Update(c echo.Context) error {
 		if errors.Is(err, ErrValidation) {
 			return response.Error(c, http.StatusBadRequest, "Data tidak valid, cek kembali form")
 		}
-		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+		return response.Error(c, http.StatusInternalServerError, err.Error())
 	}
 	return response.Success(c, http.StatusOK, "Berita berhasil diperbarui", result)
 }

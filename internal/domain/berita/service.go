@@ -27,6 +27,8 @@ type CreateInput struct {
 	Visibility  string
 	Status      string
 	EventDate   time.Time
+	PublishAt   *time.Time
+	ExpireAt    *time.Time
 	ImageHeader *multipart.FileHeader
 	AuthorID    string
 	AuthorName  string
@@ -38,6 +40,8 @@ type UpdateInput struct {
 	Visibility  string
 	Status      string
 	EventDate   time.Time
+	PublishAt   *time.Time
+	ExpireAt    *time.Time
 	ImageHeader *multipart.FileHeader
 }
 
@@ -53,6 +57,8 @@ type Service interface {
 	FindHighlightPublic(ctx context.Context) (*Berita, error)
 	FindAllPublic(ctx context.Context, page, limit int) ([]Berita, int, error)
 	FindBySlugPublic(ctx context.Context, slug string) (*Berita, error)
+
+	FindAllMember(ctx context.Context, page, limit int) ([]Berita, int, error)
 	FindBySlugMember(ctx context.Context, slug string) (*Berita, error)
 }
 
@@ -111,6 +117,9 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Berita, error) {
 	if in.ImageHeader == nil {
 		return nil, ErrValidation
 	}
+	if in.PublishAt != nil && in.ExpireAt != nil && !in.ExpireAt.After(*in.PublishAt) {
+		return nil, errors.New("waktu berakhir harus setelah waktu terbit")
+	}
 
 	imageURL, err := s.storage.Upload(ctx, in.ImageHeader, "berita")
 	if err != nil {
@@ -134,6 +143,8 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Berita, error) {
 		AuthorID:    &authorID,
 		AuthorName:  in.AuthorName,
 		EventDate:   in.EventDate,
+		PublishAt:   in.PublishAt,
+		ExpireAt:    in.ExpireAt,
 	}
 	if err := s.repo.Create(ctx, b); err != nil {
 		return nil, err
@@ -155,6 +166,9 @@ func (s *service) Update(ctx context.Context, id string, in UpdateInput) (*Berit
 	}
 	if !validateVisibility(in.Visibility) || !validateStatus(in.Status) {
 		return nil, ErrValidation
+	}
+	if in.PublishAt != nil && in.ExpireAt != nil && !in.ExpireAt.After(*in.PublishAt) {
+		return nil, errors.New("waktu berakhir harus setelah waktu terbit")
 	}
 
 	imageURL := existing.ImageURL
@@ -180,6 +194,8 @@ func (s *service) Update(ctx context.Context, id string, in UpdateInput) (*Berit
 	existing.Visibility = in.Visibility
 	existing.Status = in.Status
 	existing.EventDate = in.EventDate
+	existing.PublishAt = in.PublishAt
+	existing.ExpireAt = in.ExpireAt
 
 	if err := s.repo.Update(ctx, existing); err != nil {
 		return nil, err
@@ -225,17 +241,6 @@ func (s *service) ToggleHighlight(ctx context.Context, id string, enable bool) (
 	return s.repo.FindByID(ctx, id)
 }
 
-func (s *service) FindBySlugMember(ctx context.Context, slug string) (*Berita, error) {
-	b, err := s.repo.FindBySlug(ctx, slug)
-	if err != nil {
-		return nil, err
-	}
-	if b.Status != StatusPublished {
-		return nil, ErrNotFound
-	}
-	return b, nil
-}
-
 func (s *service) FindHighlightPublic(ctx context.Context) (*Berita, error) {
 	return s.repo.FindHighlightPublic(ctx)
 }
@@ -246,4 +251,25 @@ func (s *service) FindAllPublic(ctx context.Context, page, limit int) ([]Berita,
 
 func (s *service) FindBySlugPublic(ctx context.Context, slug string) (*Berita, error) {
 	return s.repo.FindBySlugPublic(ctx, slug)
+}
+
+func (s *service) FindAllMember(ctx context.Context, page, limit int) ([]Berita, int, error) {
+	return s.repo.FindAllMember(ctx, page, limit)
+}
+
+func (s *service) FindBySlugMember(ctx context.Context, slug string) (*Berita, error) {
+	b, err := s.repo.FindBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	if b.Status != StatusPublished || b.Visibility != VisibilityInternal {
+		return nil, ErrNotFound
+	}
+	if b.PublishAt != nil && b.PublishAt.After(time.Now()) {
+		return nil, ErrNotFound
+	}
+	if b.ExpireAt != nil && !b.ExpireAt.After(time.Now()) {
+		return nil, ErrNotFound
+	}
+	return b, nil
 }
