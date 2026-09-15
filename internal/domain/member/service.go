@@ -283,12 +283,17 @@ func (s *service) LoginWithGoogle(ctx context.Context, idTokenString string) (*L
 		return s.issueTokenFor(m)
 	}
 
+	var avatarPtr *string
+	if picture != "" {
+		if uploadedURL, uploadErr := s.storage.UploadFromURL(ctx, picture, "member-avatar"); uploadErr == nil {
+			avatarPtr = &uploadedURL
+		} else {
+			log.Error().Err(uploadErr).Msg("gagal mengunduh foto profil Google")
+		}
+	}
+
 	m, err = s.repo.FindByEmail(ctx, emailAddr)
 	if err == nil {
-		var avatarPtr *string
-		if picture != "" {
-			avatarPtr = &picture
-		}
 		if err := s.repo.LinkGoogleID(ctx, m.ID, googleID, avatarPtr); err != nil {
 			return nil, err
 		}
@@ -300,11 +305,9 @@ func (s *service) LoginWithGoogle(ctx context.Context, idTokenString string) (*L
 		FullName:        fullName,
 		Email:           emailAddr,
 		GoogleID:        &googleID,
+		AvatarURL:       avatarPtr,
 		KordaID:         nil,
 		EmailVerifiedAt: timePtr(time.Now()),
-	}
-	if picture != "" {
-		newMember.AvatarURL = &picture
 	}
 
 	if err := s.repo.Create(ctx, newMember); err != nil {

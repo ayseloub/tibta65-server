@@ -1,9 +1,12 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"mime/multipart"
+	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -56,6 +59,43 @@ func (s *S3Storage) Upload(ctx context.Context, fileHeader *multipart.FileHeader
 
 	_, err = s.client.PutObject(ctx, s.bucketName, objectName, src, fileHeader.Size, minio.PutObjectOptions{
 		ContentType: fileHeader.Header.Get("Content-Type"),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	publicURL := fmt.Sprintf("%s/%s", s.publicURL, objectName)
+	return publicURL, nil
+}
+
+func (s *S3Storage) UploadFromURL(ctx context.Context, sourceURL, folder string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("gagal mengunduh gambar: status %d", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	ext := extFromContentType(contentType)
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	objectName := fmt.Sprintf("%s/%s%s", folder, ulid.Make().String(), ext)
+
+	_, err = s.client.PutObject(ctx, s.bucketName, objectName, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
+		ContentType: contentType,
 	})
 	if err != nil {
 		return "", err

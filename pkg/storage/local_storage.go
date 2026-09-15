@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,6 +57,46 @@ func (s *LocalStorage) Upload(ctx context.Context, fileHeader *multipart.FileHea
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, src); err != nil {
+		return "", err
+	}
+
+	publicURL := fmt.Sprintf("%s/%s/%s", s.baseURL, folder, filename)
+	return publicURL, nil
+}
+
+func (s *LocalStorage) UploadFromURL(ctx context.Context, sourceURL, folder string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("gagal mengunduh gambar: status %d", resp.StatusCode)
+	}
+
+	ext := extFromContentType(resp.Header.Get("Content-Type"))
+
+	targetDir := filepath.Join(s.baseDir, folder)
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return "", err
+	}
+
+	filename := ulid.Make().String() + ext
+	targetPath := filepath.Join(targetDir, filename)
+
+	dst, err := os.Create(targetPath)
+	if err != nil {
+		return "", err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, resp.Body); err != nil {
 		return "", err
 	}
 
