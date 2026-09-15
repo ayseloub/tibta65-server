@@ -329,6 +329,8 @@ func timePtr(t time.Time) *time.Time {
 	return &t
 }
 
+const otpResendCooldown = 5 * time.Minute
+
 func (s *service) ForgotPassword(ctx context.Context, emailAddr string) error {
 	m, err := s.repo.FindByEmail(ctx, emailAddr)
 	if err != nil {
@@ -337,6 +339,12 @@ func (s *service) ForgotPassword(ctx context.Context, emailAddr string) error {
 
 	if m.PasswordHash == nil {
 		return nil
+	}
+
+	if existingOTP, findErr := s.otpRepo.FindValidByMemberID(ctx, m.ID, OTPPurposeResetPassword); findErr == nil {
+		if time.Since(existingOTP.CreatedAt) < otpResendCooldown {
+			return nil
+		}
 	}
 
 	code := generateOTPCode()
