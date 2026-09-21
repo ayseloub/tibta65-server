@@ -11,6 +11,8 @@ func RegisterRoutes(e *echo.Echo, h *Handler, memberJWTSecret, adminJWTSecret st
 	memberGroup.POST("", h.Create)
 	memberGroup.GET("", h.ListMine)
 	memberGroup.GET("/:id", h.GetMine)
+	memberGroup.GET("/unread-count", h.UnreadCount)
+	memberGroup.PUT("/:id/read", h.MarkRead)
 
 	adminGroup := e.Group("/api/admin/tickets", appMiddleware.RequireAuth(adminJWTSecret))
 	adminGroup.GET("", h.ListAdmin)

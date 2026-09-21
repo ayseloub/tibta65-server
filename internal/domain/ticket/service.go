@@ -25,6 +25,8 @@ type Service interface {
 	ListAdmin(ctx context.Context, kordaID, status string, page, limit int) ([]Ticket, int, error)
 	GetAdmin(ctx context.Context, id string) (*Ticket, error)
 	Reply(ctx context.Context, id, adminReply string) (*Ticket, error)
+	MarkReadByMember(ctx context.Context, id, memberID string) error
+	CountUnreadByMember(ctx context.Context, memberID string) (int, error)
 }
 
 type service struct {
@@ -77,4 +79,12 @@ func (s *service) Reply(ctx context.Context, id, adminReply string) (*Ticket, er
 	// TODO: setelah reply sukses, trigger email ke member (pola BrevoEmailSender
 	// yang udah dipakai di reminder/broadcast), pakai t.MemberEmail dari hasil Reply().
 	return s.repo.Reply(ctx, id, adminReply)
+}
+
+func (s *service) MarkReadByMember(ctx context.Context, id, memberID string) error {
+	return s.repo.MarkReadByMember(ctx, id, memberID)
+}
+
+func (s *service) CountUnreadByMember(ctx context.Context, memberID string) (int, error) {
+	return s.repo.CountUnreadByMember(ctx, memberID)
 }

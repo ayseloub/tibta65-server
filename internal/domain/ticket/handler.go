@@ -19,8 +19,6 @@ func NewHandler(service Service) *Handler {
 	return &Handler{service: service}
 }
 
-// ===== Member-facing =====
-
 type createRequest struct {
 	Subject string `json:"subject"`
 	Message string `json:"message"`
@@ -84,8 +82,6 @@ func (h *Handler) GetMine(c echo.Context) error {
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
 }
 
-// ===== Admin-facing =====
-
 func (h *Handler) ListAdmin(c echo.Context) error {
 	kordaID := c.QueryParam("korda_id")
 	status := c.QueryParam("status")
@@ -142,4 +138,26 @@ func (h *Handler) Reply(c echo.Context) error {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
 	return response.Success(c, http.StatusOK, "Balasan berhasil dikirim", result)
+}
+
+func (h *Handler) MarkRead(c echo.Context) error {
+	memberID := c.Get(appMiddleware.ContextKeyMemberID).(string)
+	id := c.Param("id")
+
+	if err := h.service.MarkReadByMember(c.Request().Context(), id, memberID); err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Tiket ditandai sudah dibaca", nil)
+}
+
+func (h *Handler) UnreadCount(c echo.Context) error {
+	memberID := c.Get(appMiddleware.ContextKeyMemberID).(string)
+
+	count, err := h.service.CountUnreadByMember(c.Request().Context(), memberID)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", map[string]interface{}{
+		"unread_count": count,
+	})
 }

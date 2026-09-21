@@ -12,6 +12,7 @@ import (
 )
 
 var ErrValidation = errors.New("data tidak valid")
+var ErrCannotHighlightInternal = errors.New("album internal tidak bisa dijadikan highlight, ubah visibility ke Public terlebih dahulu")
 
 const uploadFolder = "gallery"
 
@@ -190,6 +191,15 @@ func (s *service) Delete(ctx context.Context, id string) error {
 }
 
 func (s *service) SetHighlight(ctx context.Context, id string, highlight bool) error {
+	if highlight {
+		album, err := s.repo.FindByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if album.Visibility != VisibilityPublic {
+			return ErrCannotHighlightInternal
+		}
+	}
 	return s.repo.SetHighlight(ctx, id, highlight)
 }
 

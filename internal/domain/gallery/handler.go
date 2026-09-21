@@ -263,6 +263,8 @@ func handleError(c echo.Context, err error) error {
 		return response.Error(c, http.StatusNotFound, "Foto tidak ditemukan")
 	case errors.Is(err, ErrMaxPhotos):
 		return response.Error(c, http.StatusConflict, err.Error())
+	case errors.Is(err, ErrCannotHighlightInternal):
+		return response.Error(c, http.StatusBadRequest, err.Error())
 	default:
 		return response.Error(c, http.StatusBadRequest, err.Error())
 	}

@@ -1,0 +1,1 @@
+ALTER TABLE tickets ADD COLUMN member_read_at TIMESTAMPTZ NULL;

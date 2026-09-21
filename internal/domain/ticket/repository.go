@@ -20,6 +20,8 @@ type Repository interface {
 	FindAllAdmin(ctx context.Context, kordaID, status string, page, limit int) ([]Ticket, int, error)
 	FindByIDAdmin(ctx context.Context, id string) (*Ticket, error)
 	Reply(ctx context.Context, id, adminReply string) (*Ticket, error)
+	MarkReadByMember(ctx context.Context, id, memberID string) error
+	CountUnreadByMember(ctx context.Context, memberID string) (int, error)
 }
 
 type repository struct {
@@ -33,7 +35,7 @@ func NewRepository(db *sqlx.DB) Repository {
 const baseSelect = `
 	SELECT t.id, t.member_id, m.full_name AS member_name, m.email AS member_email,
 	       k.name AS korda_name, t.subject, t.message, t.status, t.admin_reply, t.replied_at,
-	       t.created_at, t.updated_at
+	       t.member_read_at, t.created_at, t.updated_at
 	FROM tickets t
 	JOIN members m ON m.id = t.member_id
 	LEFT JOIN kordas k ON k.id = m.korda_id
@@ -145,4 +147,23 @@ func (r *repository) Reply(ctx context.Context, id, adminReply string) (*Ticket,
 		return nil, err
 	}
 	return r.FindByIDAdmin(ctx, id)
+}
+
+func (r *repository) MarkReadByMember(ctx context.Context, id, memberID string) error {
+	_, err := r.db.ExecContext(ctx,
+		"UPDATE tickets SET member_read_at = now() WHERE id = $1 AND member_id = $2",
+		id, memberID,
+	)
+	return err
+}
+
+func (r *repository) CountUnreadByMember(ctx context.Context, memberID string) (int, error) {
+	var count int
+	query := `
+		SELECT COUNT(*) FROM tickets
+		WHERE member_id = $1 AND status = 'closed'
+		AND (member_read_at IS NULL OR member_read_at < replied_at)
+	`
+	err := r.db.GetContext(ctx, &count, query, memberID)
+	return count, err
 }
