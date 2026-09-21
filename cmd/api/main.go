@@ -134,7 +134,7 @@ func main() {
 	memberHandler := member.NewHandler(memberService)
 
 	pemiluRepo := pemilu.NewRepository(db)
-	pemiluService := pemilu.NewService(pemiluRepo)
+	pemiluService := pemilu.NewService(pemiluRepo, fileStorage)
 	pemiluHandler := pemilu.NewHandler(pemiluService)
 
 	memberMgmtRepo := membermanagement.NewRepository(db)

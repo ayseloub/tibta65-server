@@ -3,9 +3,12 @@ package pemilu
 import (
 	"context"
 	"errors"
+	"mime/multipart"
 	"time"
 
 	"github.com/oklog/ulid/v2"
+
+	"github.com/Tibta65web/tibta65-server/pkg/storage"
 )
 
 var ErrValidation = errors.New("data tidak valid")
@@ -31,6 +34,7 @@ type MemberKandidat struct {
 	Visi       string   `json:"visi"`
 	Misi       string   `json:"misi"`
 	Pangkat    string   `json:"pangkat"`
+	ImageURL   *string  `json:"image_url"`
 	VoteCount  *int     `json:"vote_count,omitempty"`
 	Percentage *float64 `json:"percentage,omitempty"`
 }
@@ -48,6 +52,7 @@ type KandidatInput struct {
 	Visi     string
 	Misi     string
 	Pangkat  string
+	Image    *multipart.FileHeader
 }
 
 type Service interface {
@@ -64,11 +69,12 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo    Repository
+	storage storage.Storage
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, storage storage.Storage) Service {
+	return &service{repo: repo, storage: storage}
 }
 
 func (s *service) ResetPemilu(ctx context.Context) error {
@@ -153,7 +159,20 @@ func (s *service) CreateKandidat(ctx context.Context, in KandidatInput) (*Kandid
 	if in.FullName == "" || in.Visi == "" || in.Misi == "" || in.Pangkat == "" {
 		return nil, ErrValidation
 	}
-	k := &Kandidat{ID: ulid.Make().String(), FullName: in.FullName, Visi: in.Visi, Misi: in.Misi, Pangkat: in.Pangkat}
+
+	var imageURL *string
+	if in.Image != nil {
+		url, err := s.storage.Upload(ctx, in.Image, "kandidat")
+		if err != nil {
+			return nil, err
+		}
+		imageURL = &url
+	}
+
+	k := &Kandidat{
+		ID: ulid.Make().String(), FullName: in.FullName, Visi: in.Visi, Misi: in.Misi,
+		Pangkat: in.Pangkat, ImageURL: imageURL,
+	}
 	if err := s.repo.CreateKandidat(ctx, k); err != nil {
 		return nil, err
 	}
@@ -164,7 +183,25 @@ func (s *service) UpdateKandidat(ctx context.Context, id string, in KandidatInpu
 	if in.FullName == "" || in.Visi == "" || in.Misi == "" || in.Pangkat == "" {
 		return nil, ErrValidation
 	}
-	k := &Kandidat{ID: id, FullName: in.FullName, Visi: in.Visi, Misi: in.Misi, Pangkat: in.Pangkat}
+
+	existing, err := s.repo.FindKandidatByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	imageURL := existing.ImageURL
+	if in.Image != nil {
+		url, err := s.storage.Upload(ctx, in.Image, "kandidat")
+		if err != nil {
+			return nil, err
+		}
+		imageURL = &url
+	}
+
+	k := &Kandidat{
+		ID: id, FullName: in.FullName, Visi: in.Visi, Misi: in.Misi,
+		Pangkat: in.Pangkat, ImageURL: imageURL,
+	}
 	if err := s.repo.UpdateKandidat(ctx, k); err != nil {
 		return nil, err
 	}
@@ -172,7 +209,20 @@ func (s *service) UpdateKandidat(ctx context.Context, id string, in KandidatInpu
 }
 
 func (s *service) DeleteKandidat(ctx context.Context, id string) error {
-	return s.repo.DeleteKandidat(ctx, id)
+	existing, err := s.repo.FindKandidatByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := s.repo.DeleteKandidat(ctx, id); err != nil {
+		return err
+	}
+
+	if existing.ImageURL != nil {
+		_ = s.storage.Delete(ctx, *existing.ImageURL)
+	}
+
+	return nil
 }
 
 func (s *service) MemberDashboard(ctx context.Context, memberID string) (*MemberDashboardResult, error) {
@@ -209,7 +259,7 @@ func (s *service) MemberDashboard(ctx context.Context, memberID string) (*Member
 
 	result := make([]MemberKandidat, len(kandidats))
 	for i, k := range kandidats {
-		mk := MemberKandidat{ID: k.ID, FullName: k.FullName, Visi: k.Visi, Misi: k.Misi, Pangkat: k.Pangkat}
+		mk := MemberKandidat{ID: k.ID, FullName: k.FullName, Visi: k.Visi, Misi: k.Misi, Pangkat: k.Pangkat, ImageURL: k.ImageURL}
 		if showResults {
 			vc := k.VoteCount
 			pct := 0.0

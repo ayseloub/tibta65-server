@@ -1,0 +1,1 @@
+ALTER TABLE kandidats DROP COLUMN IF EXISTS image_url;

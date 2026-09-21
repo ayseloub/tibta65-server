@@ -1,0 +1,1 @@
+ALTER TABLE kandidats ADD COLUMN image_url TEXT NULL;

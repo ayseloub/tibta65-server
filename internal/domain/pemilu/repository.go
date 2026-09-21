@@ -91,7 +91,7 @@ func (r *repository) CloseEarly(ctx context.Context) (*Settings, error) {
 }
 
 const kandidatSelect = `
-	SELECT k.id, k.full_name, k.visi, k.misi, k.pangkat, k.created_at, k.updated_at,
+	SELECT k.id, k.full_name, k.visi, k.misi, k.pangkat, k.image_url, k.created_at, k.updated_at,
 	       COALESCE(COUNT(v.id), 0) AS vote_count
 	FROM kandidats k
 	LEFT JOIN votes v ON v.kandidat_id = k.id
@@ -119,22 +119,22 @@ func (r *repository) FindKandidatByID(ctx context.Context, id string) (*Kandidat
 
 func (r *repository) CreateKandidat(ctx context.Context, k *Kandidat) error {
 	query := `
-		INSERT INTO kandidats (id, full_name, visi, misi, pangkat)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO kandidats (id, full_name, visi, misi, pangkat, image_url)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING created_at, updated_at
 	`
-	return r.db.QueryRowContext(ctx, query, k.ID, k.FullName, k.Visi, k.Misi, k.Pangkat).
+	return r.db.QueryRowContext(ctx, query, k.ID, k.FullName, k.Visi, k.Misi, k.Pangkat, k.ImageURL).
 		Scan(&k.CreatedAt, &k.UpdatedAt)
 }
 
 func (r *repository) UpdateKandidat(ctx context.Context, k *Kandidat) error {
 	query := `
 		UPDATE kandidats
-		SET full_name = $1, visi = $2, misi = $3, pangkat = $4, updated_at = now()
-		WHERE id = $5
+		SET full_name = $1, visi = $2, misi = $3, pangkat = $4, image_url = $5, updated_at = now()
+		WHERE id = $6
 		RETURNING updated_at
 	`
-	err := r.db.QueryRowContext(ctx, query, k.FullName, k.Visi, k.Misi, k.Pangkat, k.ID).Scan(&k.UpdatedAt)
+	err := r.db.QueryRowContext(ctx, query, k.FullName, k.Visi, k.Misi, k.Pangkat, k.ImageURL, k.ID).Scan(&k.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}

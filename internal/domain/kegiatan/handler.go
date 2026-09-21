@@ -26,7 +26,7 @@ func parsePublishAt(c echo.Context) (*time.Time, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	t, err := time.Parse("2006-01-02T15:04", raw)
+	t, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func parseExpireAt(c echo.Context) (*time.Time, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	t, err := time.Parse("2006-01-02T15:04", raw)
+	t, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
 		return nil, err
 	}

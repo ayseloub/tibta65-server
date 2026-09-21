@@ -8,6 +8,7 @@ type Kandidat struct {
 	Visi      string    `db:"visi" json:"visi"`
 	Misi      string    `db:"misi" json:"misi"`
 	Pangkat   string    `db:"pangkat" json:"pangkat"`
+	ImageURL  *string   `db:"image_url" json:"image_url"`
 	VoteCount int       `db:"vote_count" json:"vote_count"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`

@@ -109,12 +109,14 @@ func (h *Handler) GetKandidat(c echo.Context) error {
 }
 
 func (h *Handler) CreateKandidat(c echo.Context) error {
-	var req kandidatRequest
-	if err := c.Bind(&req); err != nil {
-		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
-	}
+	file, _ := c.FormFile("image")
+
 	k, err := h.service.CreateKandidat(c.Request().Context(), KandidatInput{
-		FullName: req.FullName, Visi: req.Visi, Misi: req.Misi, Pangkat: req.Pangkat,
+		FullName: c.FormValue("full_name"),
+		Visi:     c.FormValue("visi"),
+		Misi:     c.FormValue("misi"),
+		Pangkat:  c.FormValue("pangkat"),
+		Image:    file,
 	})
 	if err != nil {
 		return handleError(c, err)
@@ -124,12 +126,14 @@ func (h *Handler) CreateKandidat(c echo.Context) error {
 
 func (h *Handler) UpdateKandidat(c echo.Context) error {
 	id := c.Param("id")
-	var req kandidatRequest
-	if err := c.Bind(&req); err != nil {
-		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
-	}
+	file, _ := c.FormFile("image")
+
 	k, err := h.service.UpdateKandidat(c.Request().Context(), id, KandidatInput{
-		FullName: req.FullName, Visi: req.Visi, Misi: req.Misi, Pangkat: req.Pangkat,
+		FullName: c.FormValue("full_name"),
+		Visi:     c.FormValue("visi"),
+		Misi:     c.FormValue("misi"),
+		Pangkat:  c.FormValue("pangkat"),
+		Image:    file,
 	})
 	if err != nil {
 		return handleError(c, err)
