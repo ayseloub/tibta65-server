@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
 
 	"github.com/Tibta65web/tibta65-server/pkg/storage"
@@ -30,18 +31,19 @@ type ListResult struct {
 }
 
 type AlbumInput struct {
-	Title       string
-	Description string
-	EventDate   string
-	KordaID     string
-	KategoriID  string
-	Visibility  string
-	PublishAt   *time.Time
-	ExpireAt    *time.Time
+	Title             string
+	Description       string
+	EventDate         string
+	KordaID           string
+	KategoriID        string
+	Visibility        string
+	TargetGenerations []int64
+	PublishAt         *time.Time
+	ExpireAt          *time.Time
 }
 
 type Service interface {
-	List(ctx context.Context, search, visibility string, scheduled bool, page, limit int) (*ListResult, error)
+	List(ctx context.Context, search, visibility string, scheduled bool, memberGeneration, page, limit int) (*ListResult, error)
 	Get(ctx context.Context, id string) (*AlbumDetail, error)
 	GetHighlight(ctx context.Context) (*AlbumDetail, error)
 	Create(ctx context.Context, in AlbumInput) (*Album, error)
@@ -52,6 +54,8 @@ type Service interface {
 	AddPhoto(ctx context.Context, albumID string, file *multipart.FileHeader, caption string) (*Photo, error)
 	UpdatePhotoCaption(ctx context.Context, photoID, caption string) error
 	DeletePhoto(ctx context.Context, photoID string) error
+
+	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
 }
 
 type service struct {
@@ -67,7 +71,7 @@ func validateVisibility(v string) bool {
 	return v == VisibilityPublic || v == VisibilityInternal
 }
 
-func (s *service) List(ctx context.Context, search, visibility string, scheduled bool, page, limit int) (*ListResult, error) {
+func (s *service) List(ctx context.Context, search, visibility string, scheduled bool, memberGeneration, page, limit int) (*ListResult, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -75,7 +79,10 @@ func (s *service) List(ctx context.Context, search, visibility string, scheduled
 		limit = 8
 	}
 
-	items, total, err := s.repo.FindAll(ctx, ListFilter{Search: search, Visibility: visibility, Scheduled: scheduled, Page: page, Limit: limit})
+	items, total, err := s.repo.FindAll(ctx, ListFilter{
+		Search: search, Visibility: visibility, Scheduled: scheduled,
+		MemberGeneration: memberGeneration, Page: page, Limit: limit,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +154,8 @@ func (s *service) Create(ctx context.Context, in AlbumInput) (*Album, error) {
 	a := &Album{
 		ID: ulid.Make().String(), Title: title, Description: description,
 		EventDate: eventDate, KordaID: kordaID, KategoriID: kategoriID, Visibility: visibility,
-		PublishAt: in.PublishAt, ExpireAt: in.ExpireAt,
+		TargetGenerations: pq.Int64Array(in.TargetGenerations),
+		PublishAt:         in.PublishAt, ExpireAt: in.ExpireAt,
 	}
 
 	if err := s.repo.Create(ctx, a); err != nil {
@@ -165,7 +173,8 @@ func (s *service) Update(ctx context.Context, id string, in AlbumInput) (*Album,
 	a := &Album{
 		ID: id, Title: title, Description: description, EventDate: eventDate,
 		KordaID: kordaID, KategoriID: kategoriID, Visibility: visibility,
-		PublishAt: in.PublishAt, ExpireAt: in.ExpireAt,
+		TargetGenerations: pq.Int64Array(in.TargetGenerations),
+		PublishAt:         in.PublishAt, ExpireAt: in.ExpireAt,
 	}
 	if err := s.repo.Update(ctx, a); err != nil {
 		return nil, err
@@ -259,4 +268,8 @@ func (s *service) DeletePhoto(ctx context.Context, photoID string) error {
 
 	_ = s.storage.Delete(ctx, photo.ImageURL)
 	return nil
+}
+
+func (s *service) GetMemberGeneration(ctx context.Context, memberID string) (int, error) {
+	return s.repo.GetMemberGeneration(ctx, memberID)
 }

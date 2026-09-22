@@ -19,10 +19,14 @@ func NewHandler(service Service) *Handler {
 }
 
 type registerRequest struct {
-	FullName string `json:"full_name"`
-	Email    string `json:"email"`
-	KordaID  string `json:"korda_id"`
-	Password string `json:"password"`
+	FullName           string `json:"full_name"`
+	Email              string `json:"email"`
+	KordaID            string `json:"korda_id"`
+	Password           string `json:"password"`
+	Phone              string `json:"phone"`
+	Address            string `json:"address"`
+	Generation         int    `json:"generation"`
+	ParentMemberNumber string `json:"parent_member_number"`
 }
 
 type loginRequest struct {
@@ -54,6 +58,27 @@ type updateProfileRequest struct {
 type changePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
+}
+
+type completeProfileRequest struct {
+	Generation         int    `json:"generation"`
+	ParentMemberNumber string `json:"parent_member_number"`
+	KordaID            string `json:"korda_id"`
+}
+
+func (h *Handler) CompleteProfile(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
+
+	var req completeProfileRequest
+	if err := c.Bind(&req); err != nil {
+		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
+	}
+
+	m, err := h.service.CompleteProfile(c.Request().Context(), memberID, req.Generation, req.ParentMemberNumber, req.KordaID)
+	if err != nil {
+		return handleError(c, err)
+	}
+	return response.Success(c, http.StatusOK, "Profil berhasil dilengkapi", m)
 }
 
 func (h *Handler) UpdateProfile(c echo.Context) error {
@@ -155,6 +180,7 @@ func (h *Handler) Register(c echo.Context) error {
 
 	m, err := h.service.Register(c.Request().Context(), RegisterInput{
 		FullName: req.FullName, Email: req.Email, KordaID: req.KordaID, Password: req.Password,
+		Phone: req.Phone, Address: req.Address, Generation: req.Generation, ParentMemberNumber: req.ParentMemberNumber,
 	})
 	if err != nil {
 		return handleError(c, err)
@@ -184,12 +210,34 @@ func (h *Handler) Me(c echo.Context) error {
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", m)
 }
 
+func (h *Handler) GetFamily(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
+	result, err := h.service.GetFamily(c.Request().Context(), memberID)
+	if err != nil {
+		return handleError(c, err)
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
+}
+
+func (h *Handler) DeleteChild(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
+	targetID := c.Param("id")
+	if err := h.service.DeleteChild(c.Request().Context(), memberID, targetID); err != nil {
+		return handleError(c, err)
+	}
+	return response.Success(c, http.StatusOK, "Akun berhasil dihapus", nil)
+}
+
 func handleError(c echo.Context, err error) error {
 	switch {
 	case errors.Is(err, ErrValidation):
 		return response.Error(c, http.StatusBadRequest, "Semua field wajib diisi")
 	case errors.Is(err, ErrDuplicate):
 		return response.Error(c, http.StatusConflict, "Email sudah terdaftar")
+	case errors.Is(err, ErrInvalidParentMemberNumber):
+		return response.Error(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, ErrParentGenerationMismatch):
+		return response.Error(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrInvalidCredentials):
 		return response.Error(c, http.StatusUnauthorized, "Email atau password salah")
 	case errors.Is(err, ErrGoogleOnlyAccount):
@@ -198,6 +246,12 @@ func handleError(c echo.Context, err error) error {
 		return response.Error(c, http.StatusForbidden, err.Error())
 	case errors.Is(err, ErrInvalidOTP):
 		return response.Error(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, ErrNotDirectChild):
+		return response.Error(c, http.StatusForbidden, err.Error())
+	case errors.Is(err, ErrProfileAlreadyCompleted):
+		return response.Error(c, http.StatusConflict, err.Error())
+	case errors.Is(err, ErrAccountNotClaimed):
+		return response.Error(c, http.StatusConflict, err.Error())
 	default:
 		return response.Error(c, http.StatusBadRequest, err.Error())
 	}
@@ -215,6 +269,9 @@ func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret string) {
 	e.POST("/api/member-auth/avatar", h.UpdateAvatar, appMiddleware.RequireMemberAuth(jwtSecret))
 	e.DELETE("/api/member-auth/avatar", h.DeleteAvatar, appMiddleware.RequireMemberAuth(jwtSecret))
 	e.POST("/api/member-auth/change-password", h.ChangePassword, appMiddleware.RequireMemberAuth(jwtSecret))
+	e.GET("/api/member-auth/family", h.GetFamily, appMiddleware.RequireMemberAuth(jwtSecret))
+	e.DELETE("/api/member-auth/family/:id", h.DeleteChild, appMiddleware.RequireMemberAuth(jwtSecret))
+	e.PUT("/api/member-auth/complete-profile", h.CompleteProfile, appMiddleware.RequireMemberAuth(jwtSecret))
 }
 
 type verifyOTPRequest struct {

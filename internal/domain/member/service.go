@@ -20,24 +20,38 @@ import (
 )
 
 var (
-	ErrValidation         = errors.New("data tidak valid")
-	ErrInvalidCredentials = errors.New("email atau password salah")
-	ErrGoogleOnlyAccount  = errors.New("akun ini terdaftar via Google, silakan login dengan Google")
-	ErrEmailNotVerified   = errors.New("email belum diverifikasi, silakan cek kode OTP yang dikirim ke email kamu")
-	ErrInvalidOTP         = errors.New("kode OTP salah atau sudah kedaluwarsa")
+	ErrValidation                = errors.New("data tidak valid")
+	ErrInvalidCredentials        = errors.New("email atau password salah")
+	ErrGoogleOnlyAccount         = errors.New("akun ini terdaftar via Google, silakan login dengan Google")
+	ErrEmailNotVerified          = errors.New("email belum diverifikasi, silakan cek kode OTP yang dikirim ke email kamu")
+	ErrInvalidOTP                = errors.New("kode OTP salah atau sudah kedaluwarsa")
+	ErrInvalidParentMemberNumber = errors.New("nomor induk orang tua tidak ditemukan")
+	ErrParentGenerationMismatch  = errors.New("nomor induk yang dimasukkan bukan dari generasi sebelumnya")
+	ErrNotDirectChild            = errors.New("kamu hanya bisa menghapus akun yang terdaftar menggunakan nomor indukmu")
+	ErrProfileAlreadyCompleted   = errors.New("profil sudah pernah dilengkapi sebelumnya")
+	ErrAccountNotClaimed         = errors.New("akun ini belum diaktivasi, silakan gunakan halaman Aktivasi Akun dengan token dari admin")
 
 	otpExpiry = 10 * time.Minute
 )
 
 type RegisterInput struct {
-	FullName string
-	Email    string
-	KordaID  string
-	Password string
+	FullName           string
+	Email              string
+	KordaID            string
+	Password           string
+	Phone              string
+	Address            string
+	Generation         int
+	ParentMemberNumber string
 }
 
 type LoginResult struct {
 	Token string `json:"token"`
+}
+
+type FamilyResult struct {
+	Parent  *Member  `json:"parent"`
+	Members []Member `json:"members"`
 }
 
 type Service interface {
@@ -52,6 +66,9 @@ type Service interface {
 	UpdateAvatar(ctx context.Context, memberID string, file *multipart.FileHeader) (*Member, error)
 	DeleteAvatar(ctx context.Context, memberID string) error
 	ChangePassword(ctx context.Context, memberID, currentPassword, newPassword string) error
+	GetFamily(ctx context.Context, memberID string) (*FamilyResult, error)
+	DeleteChild(ctx context.Context, requesterID, targetID string) error
+	CompleteProfile(ctx context.Context, memberID string, generation int, parentMemberNumber, kordaID string) (*Member, error)
 }
 
 type service struct {
@@ -153,6 +170,52 @@ func (s *service) ChangePassword(ctx context.Context, memberID, currentPassword,
 	return s.repo.UpdatePassword(ctx, memberID, string(hash))
 }
 
+func (s *service) GetFamily(ctx context.Context, memberID string) (*FamilyResult, error) {
+	self, err := s.repo.FindByID(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+
+	if self.ParentMemberID == nil {
+		descendants, err := s.repo.FindDescendants(ctx, self.ID)
+		if err != nil {
+			return nil, err
+		}
+		return &FamilyResult{Parent: nil, Members: descendants}, nil
+	}
+
+	parent, err := s.repo.FindByID(ctx, *self.ParentMemberID)
+	if err != nil {
+		return nil, err
+	}
+
+	tree, err := s.repo.FindDescendants(ctx, parent.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	members := make([]Member, 0, len(tree))
+	for _, m := range tree {
+		if m.ID == self.ID {
+			continue
+		}
+		members = append(members, m)
+	}
+
+	return &FamilyResult{Parent: parent, Members: members}, nil
+}
+
+func (s *service) DeleteChild(ctx context.Context, requesterID, targetID string) error {
+	target, err := s.repo.FindByID(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	if target.ParentMemberID == nil || *target.ParentMemberID != requesterID {
+		return ErrNotDirectChild
+	}
+	return s.repo.Delete(ctx, targetID)
+}
+
 func NewService(repo Repository, otpRepo OTPRepository, emailSender email.EmailSender, storage storage.Storage, jwtSecret string, jwtExpiry time.Duration, googleClientID string) Service {
 	return &service{
 		repo: repo, otpRepo: otpRepo, emailSender: emailSender, storage: storage,
@@ -172,19 +235,62 @@ func (s *service) Register(ctx context.Context, in RegisterInput) (*Member, erro
 		return nil, errors.New("password minimal 8 karakter")
 	}
 
+	generation := in.Generation
+	if generation < 1 {
+		generation = 1
+	}
+
+	var parentID *string
+	if generation > 1 {
+		if in.ParentMemberNumber == "" {
+			return nil, errors.New("nomor induk orang tua wajib diisi untuk generasi di atas 1")
+		}
+		parent, err := s.repo.FindByMemberNumber(ctx, in.ParentMemberNumber)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, ErrInvalidParentMemberNumber
+			}
+			return nil, err
+		}
+		if parent.Generation != generation-1 {
+			return nil, ErrParentGenerationMismatch
+		}
+		parentID = &parent.ID
+	}
+
+	memberNumber, err := s.repo.NextMemberNumber(ctx, generation)
+	if err != nil {
+		return nil, err
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 	hashStr := string(hash)
 
+	var phonePtr, addressPtr *string
+	if in.Phone != "" {
+		phonePtr = &in.Phone
+	}
+	if in.Address != "" {
+		addressPtr = &in.Address
+	}
+
 	kordaID := in.KordaID
 	m := &Member{
-		ID:           ulid.Make().String(),
-		FullName:     in.FullName,
-		Email:        in.Email,
-		PasswordHash: &hashStr,
-		KordaID:      &kordaID,
+		ID:               ulid.Make().String(),
+		FullName:         in.FullName,
+		Email:            in.Email,
+		Phone:            phonePtr,
+		Address:          addressPtr,
+		PasswordHash:     &hashStr,
+		KordaID:          &kordaID,
+		MemberNumber:     memberNumber,
+		Generation:       generation,
+		ParentMemberID:   parentID,
+		Status:           StatusPendingReview,
+		ProfileCompleted: true,
 	}
 
 	if err := s.repo.Create(ctx, m); err != nil {
@@ -212,6 +318,52 @@ func (s *service) Register(ctx context.Context, in RegisterInput) (*Member, erro
 	return m, nil
 }
 
+func (s *service) CompleteProfile(ctx context.Context, memberID string, generation int, parentMemberNumber, kordaID string) (*Member, error) {
+	m, err := s.repo.FindByID(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+	if m.ProfileCompleted {
+		return nil, ErrProfileAlreadyCompleted
+	}
+	if kordaID == "" {
+		return nil, ErrValidation
+	}
+
+	if generation < 1 {
+		generation = 1
+	}
+
+	var parentID *string
+	if generation > 1 {
+		if parentMemberNumber == "" {
+			return nil, errors.New("nomor induk orang tua wajib diisi untuk generasi di atas 1")
+		}
+		parent, err := s.repo.FindByMemberNumber(ctx, parentMemberNumber)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, ErrInvalidParentMemberNumber
+			}
+			return nil, err
+		}
+		if parent.Generation != generation-1 {
+			return nil, ErrParentGenerationMismatch
+		}
+		parentID = &parent.ID
+	}
+
+	newMemberNumber, err := s.repo.NextMemberNumber(ctx, generation)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.CompleteProfile(ctx, memberID, newMemberNumber, generation, parentID, kordaID); err != nil {
+		return nil, err
+	}
+
+	return s.repo.FindByID(ctx, memberID)
+}
+
 func (s *service) VerifyOTP(ctx context.Context, memberID, code string) error {
 	otp, err := s.otpRepo.FindValidByMemberID(ctx, memberID, OTPPurposeRegister)
 	if err != nil {
@@ -230,8 +382,11 @@ func (s *service) VerifyOTP(ctx context.Context, memberID, code string) error {
 	return nil
 }
 
-func (s *service) Login(ctx context.Context, emailAddr, password string) (*LoginResult, error) {
-	m, err := s.repo.FindByEmail(ctx, emailAddr)
+func (s *service) Login(ctx context.Context, identifier, password string) (*LoginResult, error) {
+	m, err := s.repo.FindByEmail(ctx, identifier)
+	if errors.Is(err, ErrNotFound) {
+		m, err = s.repo.FindByUsername(ctx, identifier)
+	}
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil, ErrInvalidCredentials
@@ -294,20 +449,32 @@ func (s *service) LoginWithGoogle(ctx context.Context, idTokenString string) (*L
 
 	m, err = s.repo.FindByEmail(ctx, emailAddr)
 	if err == nil {
+		if m.Status == StatusUnclaimed {
+			return nil, ErrAccountNotClaimed
+		}
 		if err := s.repo.LinkGoogleID(ctx, m.ID, googleID, avatarPtr); err != nil {
 			return nil, err
 		}
 		return s.issueTokenFor(m)
 	}
 
+	memberNumber, err := s.repo.NextMemberNumber(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+
 	newMember := &Member{
-		ID:              ulid.Make().String(),
-		FullName:        fullName,
-		Email:           emailAddr,
-		GoogleID:        &googleID,
-		AvatarURL:       avatarPtr,
-		KordaID:         nil,
-		EmailVerifiedAt: timePtr(time.Now()),
+		ID:               ulid.Make().String(),
+		FullName:         fullName,
+		Email:            emailAddr,
+		GoogleID:         &googleID,
+		AvatarURL:        avatarPtr,
+		KordaID:          nil,
+		MemberNumber:     memberNumber,
+		Generation:       1,
+		Status:           StatusPendingReview,
+		ProfileCompleted: false,
+		EmailVerifiedAt:  timePtr(time.Now()),
 	}
 
 	if err := s.repo.Create(ctx, newMember); err != nil {

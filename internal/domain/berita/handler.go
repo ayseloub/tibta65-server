@@ -93,6 +93,7 @@ func (h *Handler) Create(c echo.Context) error {
 }
 
 func (h *Handler) ListMember(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	if page < 1 {
@@ -102,7 +103,12 @@ func (h *Handler) ListMember(c echo.Context) error {
 		limit = 10
 	}
 
-	items, total, err := h.service.FindAllMember(c.Request().Context(), page, limit)
+	generation, err := h.service.GetMemberGeneration(c.Request().Context(), memberID)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+
+	items, total, err := h.service.FindAllMember(c.Request().Context(), page, limit, generation)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -113,7 +119,9 @@ func (h *Handler) ListMember(c echo.Context) error {
 }
 
 func (h *Handler) GetMember(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 	slug := c.Param("slug")
+
 	result, err := h.service.FindBySlugMember(c.Request().Context(), slug)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -121,6 +129,24 @@ func (h *Handler) GetMember(c echo.Context) error {
 		}
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
+
+	if len(result.TargetGenerations) > 0 {
+		generation, err := h.service.GetMemberGeneration(c.Request().Context(), memberID)
+		if err != nil {
+			return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+		}
+		eligible := false
+		for _, g := range result.TargetGenerations {
+			if int(g) == generation {
+				eligible = true
+				break
+			}
+		}
+		if !eligible {
+			return response.Error(c, http.StatusNotFound, "Berita tidak ditemukan")
+		}
+	}
+
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
 }
 

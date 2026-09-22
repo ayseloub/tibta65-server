@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
 
 	"github.com/Tibta65web/tibta65-server/pkg/slug"
@@ -30,30 +31,32 @@ type ListResult struct {
 }
 
 type CreateInput struct {
-	Title       string
-	Date        string
-	KordaID     string
-	KategoriID  string
-	Location    string
-	Description string
-	Visibility  string
-	PublishAt   *time.Time
-	ExpireAt    *time.Time
-	Image       *multipart.FileHeader
+	Title             string
+	Date              string
+	KordaID           string
+	KategoriID        string
+	Location          string
+	Description       string
+	Visibility        string
+	TargetGenerations []int64
+	PublishAt         *time.Time
+	ExpireAt          *time.Time
+	Image             *multipart.FileHeader
 }
 
 type UpdateInput struct {
-	Slug        string
-	Title       string
-	Date        string
-	KordaID     string
-	KategoriID  string
-	Location    string
-	Description string
-	Visibility  string
-	PublishAt   *time.Time
-	ExpireAt    *time.Time
-	Image       *multipart.FileHeader
+	Slug              string
+	Title             string
+	Date              string
+	KordaID           string
+	KategoriID        string
+	Location          string
+	Description       string
+	Visibility        string
+	TargetGenerations []int64
+	PublishAt         *time.Time
+	ExpireAt          *time.Time
+	Image             *multipart.FileHeader
 }
 
 type Service interface {
@@ -62,6 +65,7 @@ type Service interface {
 	Create(ctx context.Context, in CreateInput) (*Kegiatan, error)
 	Update(ctx context.Context, in UpdateInput) (*Kegiatan, error)
 	Delete(ctx context.Context, slug string) error
+	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
 }
 
 type service struct {
@@ -126,18 +130,19 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Kegiatan, error)
 	}
 
 	k := &Kegiatan{
-		ID:          ulid.Make().String(),
-		Slug:        slug.Generate(in.Title),
-		Title:       in.Title,
-		Date:        date,
-		KordaID:     in.KordaID,
-		KategoriID:  in.KategoriID,
-		Location:    in.Location,
-		ImageURL:    imageURL,
-		Description: in.Description,
-		Visibility:  in.Visibility,
-		PublishAt:   in.PublishAt,
-		ExpireAt:    in.ExpireAt,
+		ID:                ulid.Make().String(),
+		Slug:              slug.Generate(in.Title),
+		Title:             in.Title,
+		Date:              date,
+		KordaID:           in.KordaID,
+		KategoriID:        in.KategoriID,
+		Location:          in.Location,
+		ImageURL:          imageURL,
+		Description:       in.Description,
+		Visibility:        in.Visibility,
+		TargetGenerations: pq.Int64Array(in.TargetGenerations),
+		PublishAt:         in.PublishAt,
+		ExpireAt:          in.ExpireAt,
 	}
 
 	if err := s.repo.Create(ctx, k); err != nil {
@@ -182,7 +187,8 @@ func (s *service) Update(ctx context.Context, in UpdateInput) (*Kegiatan, error)
 		Slug: in.Slug, Title: in.Title, Date: date, KordaID: in.KordaID,
 		KategoriID: in.KategoriID, Location: in.Location, ImageURL: imageURL,
 		Description: in.Description, Visibility: in.Visibility,
-		PublishAt: in.PublishAt, ExpireAt: in.ExpireAt,
+		TargetGenerations: pq.Int64Array(in.TargetGenerations),
+		PublishAt:         in.PublishAt, ExpireAt: in.ExpireAt,
 	}
 
 	if err := s.repo.Update(ctx, k); err != nil {
@@ -209,4 +215,8 @@ func (s *service) Delete(ctx context.Context, slugParam string) error {
 	}
 	_ = s.storage.Delete(ctx, existing.ImageURL)
 	return nil
+}
+
+func (s *service) GetMemberGeneration(ctx context.Context, memberID string) (int, error) {
+	return s.repo.GetMemberGeneration(ctx, memberID)
 }

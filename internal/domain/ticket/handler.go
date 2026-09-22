@@ -20,8 +20,9 @@ func NewHandler(service Service) *Handler {
 }
 
 type createRequest struct {
-	Subject string `json:"subject"`
-	Message string `json:"message"`
+	Subject          string `json:"subject"`
+	Message          string `json:"message"`
+	ReportedMemberID string `json:"reported_member_id"`
 }
 
 func (h *Handler) Create(c echo.Context) error {
@@ -36,7 +37,7 @@ func (h *Handler) Create(c echo.Context) error {
 	}
 
 	result, err := h.service.Create(c.Request().Context(), CreateInput{
-		MemberID: memberID, Subject: req.Subject, Message: req.Message,
+		MemberID: memberID, Subject: req.Subject, Message: req.Message, ReportedMemberID: req.ReportedMemberID,
 	})
 	if err != nil {
 		if errors.Is(err, ErrRateLimited) {

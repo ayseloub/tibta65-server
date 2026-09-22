@@ -1,0 +1,21 @@
+ALTER TABLE gallery_albums DROP COLUMN IF EXISTS target_generations;
+ALTER TABLE beritas DROP COLUMN IF EXISTS target_generations;
+ALTER TABLE kegiatans DROP COLUMN IF EXISTS target_generations;
+ALTER TABLE pemilu_settings DROP COLUMN IF EXISTS eligible_generations;
+ALTER TABLE tickets DROP COLUMN IF EXISTS reported_member_id;
+DROP TABLE IF EXISTS member_pending_changes;
+DROP TABLE IF EXISTS member_activation_tokens;
+ALTER TABLE members DROP COLUMN IF EXISTS legacy_identifier_raw;
+ALTER TABLE members DROP COLUMN IF EXISTS pangkat_terakhir;
+ALTER TABLE members DROP COLUMN IF EXISTS no_ak;
+ALTER TABLE members DROP COLUMN IF EXISTS nrp;
+ALTER TABLE members DROP COLUMN IF EXISTS agama;
+ALTER TABLE members DROP COLUMN IF EXISTS status;
+ALTER TABLE members DROP COLUMN IF EXISTS parent_member_id;
+ALTER TABLE members DROP COLUMN IF EXISTS generation;
+ALTER TABLE members DROP COLUMN IF EXISTS username;
+ALTER TABLE members DROP COLUMN IF EXISTS member_number;
+
+ALTER TABLE members RENAME CONSTRAINT members_legacy_member_number_unique TO members_member_number_unique;
+ALTER TABLE members ALTER COLUMN legacy_member_number SET NOT NULL;
+ALTER TABLE members RENAME COLUMN legacy_member_number TO member_number;

@@ -2,6 +2,10 @@ package membermanagement
 
 import (
 	"context"
+	"errors"
+	"fmt"
+
+	"github.com/oklog/ulid/v2"
 
 	"github.com/Tibta65web/tibta65-server/internal/domain/member"
 )
@@ -19,14 +23,95 @@ type Service interface {
 	ListAll(ctx context.Context, page, limit int) (*ListResult, error)
 	Approve(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
+	CreateLegacyMember(ctx context.Context, in CreateLegacyMemberInput) (*member.Member, error)
+	UpdateStatus(ctx context.Context, id, status string) error
 }
 
 type service struct {
-	repo Repository
+	repo       Repository
+	memberRepo member.Repository
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, memberRepo member.Repository) Service {
+	return &service{repo: repo, memberRepo: memberRepo}
+}
+
+type CreateLegacyMemberInput struct {
+	FullName        string
+	Generation      int
+	ParentMemberID  string
+	NamaSuci        string
+	Agama           string
+	NRP             string
+	NoAK            string
+	PangkatTerakhir string
+}
+
+var ErrInvalidStatusTransition = errors.New("status tujuan tidak valid")
+
+func (s *service) UpdateStatus(ctx context.Context, id, status string) error {
+	if status != member.StatusDeceased && status != member.StatusRejected {
+		return ErrInvalidStatusTransition
+	}
+	return s.repo.UpdateStatus(ctx, id, status)
+}
+
+func (s *service) CreateLegacyMember(ctx context.Context, in CreateLegacyMemberInput) (*member.Member, error) {
+	if in.FullName == "" {
+		return nil, member.ErrValidation
+	}
+	generation := in.Generation
+	if generation < 1 {
+		generation = 1
+	}
+
+	memberNumber, err := s.memberRepo.NextMemberNumber(ctx, generation)
+	if err != nil {
+		return nil, err
+	}
+
+	var namaSuciPtr, agamaPtr, nrpPtr, noAkPtr, pangkatPtr, parentPtr *string
+	if in.NamaSuci != "" {
+		namaSuciPtr = &in.NamaSuci
+	}
+	if in.Agama != "" {
+		agamaPtr = &in.Agama
+	}
+	if in.NRP != "" {
+		nrpPtr = &in.NRP
+	}
+	if in.NoAK != "" {
+		noAkPtr = &in.NoAK
+	}
+	if in.PangkatTerakhir != "" {
+		pangkatPtr = &in.PangkatTerakhir
+	}
+	if in.ParentMemberID != "" {
+		parentPtr = &in.ParentMemberID
+	}
+
+	placeholderEmail := fmt.Sprintf("unclaimed+%s@tibta65.local", memberNumber)
+
+	m := &member.Member{
+		ID:               ulid.Make().String(),
+		FullName:         in.FullName,
+		Email:            placeholderEmail,
+		MemberNumber:     memberNumber,
+		Generation:       generation,
+		ParentMemberID:   parentPtr,
+		Status:           member.StatusUnclaimed,
+		ProfileCompleted: true,
+		NamaSuci:         namaSuciPtr,
+		Agama:            agamaPtr,
+		NRP:              nrpPtr,
+		NoAK:             noAkPtr,
+		PangkatTerakhir:  pangkatPtr,
+	}
+
+	if err := s.memberRepo.Create(ctx, m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func normalizePaging(page, limit int) (int, int) {

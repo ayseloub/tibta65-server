@@ -195,14 +195,21 @@ func (h *Handler) GetPublic(c echo.Context) error {
 }
 
 func (h *Handler) ListInternal(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 
+	generation, err := h.service.GetMemberGeneration(c.Request().Context(), memberID)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+
 	f := ListFilter{
-		Visibility: VisibilityInternal,
-		Scheduled:  true,
-		Page:       page,
-		Limit:      limit,
+		Visibility:       VisibilityInternal,
+		Scheduled:        true,
+		MemberGeneration: generation,
+		Page:             page,
+		Limit:            limit,
 	}
 
 	result, err := h.service.List(c.Request().Context(), f)
@@ -213,7 +220,9 @@ func (h *Handler) ListInternal(c echo.Context) error {
 }
 
 func (h *Handler) GetInternal(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 	slugParam := c.Param("slug")
+
 	k, err := h.service.Get(c.Request().Context(), slugParam)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -230,6 +239,24 @@ func (h *Handler) GetInternal(c echo.Context) error {
 	if k.ExpireAt != nil && !k.ExpireAt.After(time.Now()) {
 		return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
 	}
+
+	if len(k.TargetGenerations) > 0 {
+		generation, err := h.service.GetMemberGeneration(c.Request().Context(), memberID)
+		if err != nil {
+			return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+		}
+		eligible := false
+		for _, g := range k.TargetGenerations {
+			if int(g) == generation {
+				eligible = true
+				break
+			}
+		}
+		if !eligible {
+			return response.Error(c, http.StatusNotFound, "Kegiatan tidak ditemukan")
+		}
+	}
+
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", k)
 }
 

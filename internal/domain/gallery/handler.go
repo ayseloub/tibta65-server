@@ -22,14 +22,15 @@ func NewHandler(service Service) *Handler {
 }
 
 type albumRequest struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	EventDate   string `json:"event_date"`
-	KordaID     string `json:"korda_id"`
-	KategoriID  string `json:"kategori_id"`
-	Visibility  string `json:"visibility"`
-	PublishAt   string `json:"publish_at"`
-	ExpireAt    string `json:"expire_at"`
+	Title             string  `json:"title"`
+	Description       string  `json:"description"`
+	EventDate         string  `json:"event_date"`
+	KordaID           string  `json:"korda_id"`
+	KategoriID        string  `json:"kategori_id"`
+	Visibility        string  `json:"visibility"`
+	TargetGenerations []int64 `json:"target_generations"`
+	PublishAt         string  `json:"publish_at"`
+	ExpireAt          string  `json:"expire_at"`
 }
 
 type highlightRequest struct {
@@ -64,7 +65,8 @@ func (req albumRequest) toAlbumInput() (AlbumInput, error) {
 	return AlbumInput{
 		Title: req.Title, Description: req.Description, EventDate: req.EventDate,
 		KordaID: req.KordaID, KategoriID: req.KategoriID, Visibility: req.Visibility,
-		PublishAt: publishAt, ExpireAt: expireAt,
+		TargetGenerations: req.TargetGenerations,
+		PublishAt:         publishAt, ExpireAt: expireAt,
 	}, nil
 }
 
@@ -72,9 +74,9 @@ func (h *Handler) List(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	search := c.QueryParam("search")
-	visibility := c.QueryParam("visibility") // admin boleh filter/lihat semua
+	visibility := c.QueryParam("visibility")
 
-	result, err := h.service.List(c.Request().Context(), search, visibility, false, page, limit)
+	result, err := h.service.List(c.Request().Context(), search, visibility, false, 0, page, limit)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -199,7 +201,7 @@ func (h *Handler) ListPublic(c echo.Context) error {
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	search := c.QueryParam("search")
 
-	result, err := h.service.List(c.Request().Context(), search, VisibilityPublic, true, page, limit)
+	result, err := h.service.List(c.Request().Context(), search, VisibilityPublic, true, 0, page, limit)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -225,10 +227,16 @@ func (h *Handler) GetPublic(c echo.Context) error {
 }
 
 func (h *Handler) ListInternal(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 
-	result, err := h.service.List(c.Request().Context(), "", VisibilityInternal, true, page, limit)
+	generation, err := h.service.GetMemberGeneration(c.Request().Context(), memberID)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+
+	result, err := h.service.List(c.Request().Context(), "", VisibilityInternal, true, generation, page, limit)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -236,7 +244,9 @@ func (h *Handler) ListInternal(c echo.Context) error {
 }
 
 func (h *Handler) GetInternal(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 	id := c.Param("id")
+
 	result, err := h.service.Get(c.Request().Context(), id)
 	if err != nil {
 		return handleError(c, err)
@@ -250,6 +260,24 @@ func (h *Handler) GetInternal(c echo.Context) error {
 	if result.ExpireAt != nil && !result.ExpireAt.After(time.Now()) {
 		return response.Error(c, http.StatusNotFound, "Album tidak ditemukan")
 	}
+
+	if len(result.TargetGenerations) > 0 {
+		generation, err := h.service.GetMemberGeneration(c.Request().Context(), memberID)
+		if err != nil {
+			return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+		}
+		eligible := false
+		for _, g := range result.TargetGenerations {
+			if int(g) == generation {
+				eligible = true
+				break
+			}
+		}
+		if !eligible {
+			return response.Error(c, http.StatusNotFound, "Album tidak ditemukan")
+		}
+	}
+
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
 }
 

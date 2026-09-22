@@ -35,19 +35,21 @@ func NewRepository(db *sqlx.DB) Repository {
 const baseSelect = `
 	SELECT t.id, t.member_id, m.full_name AS member_name, m.email AS member_email,
 	       k.name AS korda_name, t.subject, t.message, t.status, t.admin_reply, t.replied_at,
-	       t.member_read_at, t.created_at, t.updated_at
+	       t.member_read_at, t.reported_member_id, rm.full_name AS reported_name,
+	       t.created_at, t.updated_at
 	FROM tickets t
 	JOIN members m ON m.id = t.member_id
 	LEFT JOIN kordas k ON k.id = m.korda_id
+	LEFT JOIN members rm ON rm.id = t.reported_member_id
 `
 
 func (r *repository) Create(ctx context.Context, t *Ticket) error {
 	query := `
-		INSERT INTO tickets (id, member_id, subject, message, status)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO tickets (id, member_id, subject, message, status, reported_member_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING created_at, updated_at
 	`
-	return r.db.QueryRowContext(ctx, query, t.ID, t.MemberID, t.Subject, t.Message, t.Status).
+	return r.db.QueryRowContext(ctx, query, t.ID, t.MemberID, t.Subject, t.Message, t.Status, t.ReportedMemberID).
 		Scan(&t.CreatedAt, &t.UpdatedAt)
 }
 

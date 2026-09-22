@@ -9,6 +9,8 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
+
+	"github.com/Tibta65web/tibta65-server/internal/domain/member"
 )
 
 var ErrNotFound = errors.New("kandidat not found")
@@ -19,7 +21,7 @@ var ErrKandidatHasVotes = errors.New("kandidat sudah memiliki suara, tidak bisa 
 
 type Repository interface {
 	FindSettings(ctx context.Context) (*Settings, error)
-	UpdateSettings(ctx context.Context, startAt, endAt string) (*Settings, error)
+	UpdateSettings(ctx context.Context, startAt, endAt string, eligibleGenerations []int64) (*Settings, error)
 	CloseEarly(ctx context.Context) (*Settings, error)
 
 	FindAllKandidat(ctx context.Context) ([]Kandidat, error)
@@ -36,6 +38,8 @@ type Repository interface {
 	ResetAll(ctx context.Context) error
 
 	IsMemberApproved(ctx context.Context, memberID string) (bool, error)
+
+	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
 }
 
 type repository struct {
@@ -46,32 +50,38 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
+func (r *repository) GetMemberGeneration(ctx context.Context, memberID string) (int, error) {
+	var generation int
+	err := r.db.GetContext(ctx, &generation, "SELECT generation FROM members WHERE id = $1", memberID)
+	return generation, err
+}
+
 func (r *repository) IsMemberApproved(ctx context.Context, memberID string) (bool, error) {
-	var approvedAt sql.NullTime
-	err := r.db.GetContext(ctx, &approvedAt, "SELECT approved_at FROM members WHERE id = $1", memberID)
+	var status string
+	err := r.db.GetContext(ctx, &status, "SELECT status FROM members WHERE id = $1", memberID)
 	if err != nil {
 		return false, err
 	}
-	return approvedAt.Valid, nil
+	return status == member.StatusActive, nil
 }
 
 func (r *repository) FindSettings(ctx context.Context) (*Settings, error) {
 	var s Settings
-	query := `SELECT id, start_at, end_at, closed_early_at, created_at, updated_at FROM pemilu_settings LIMIT 1`
+	query := `SELECT id, start_at, end_at, closed_early_at, eligible_generations, created_at, updated_at FROM pemilu_settings LIMIT 1`
 	if err := r.db.GetContext(ctx, &s, query); err != nil {
 		return nil, err
 	}
 	return &s, nil
 }
 
-func (r *repository) UpdateSettings(ctx context.Context, startAt, endAt string) (*Settings, error) {
+func (r *repository) UpdateSettings(ctx context.Context, startAt, endAt string, eligibleGenerations []int64) (*Settings, error) {
 	var s Settings
 	query := `
 		UPDATE pemilu_settings
-		SET start_at = $1, end_at = $2, closed_early_at = NULL, updated_at = now()
-		RETURNING id, start_at, end_at, closed_early_at, created_at, updated_at
+		SET start_at = $1, end_at = $2, closed_early_at = NULL, eligible_generations = $3, updated_at = now()
+		RETURNING id, start_at, end_at, closed_early_at, eligible_generations, created_at, updated_at
 	`
-	if err := r.db.GetContext(ctx, &s, query, startAt, endAt); err != nil {
+	if err := r.db.GetContext(ctx, &s, query, startAt, endAt, pq.Int64Array(eligibleGenerations)); err != nil {
 		return nil, err
 	}
 	return &s, nil
@@ -82,7 +92,7 @@ func (r *repository) CloseEarly(ctx context.Context) (*Settings, error) {
 	query := `
 		UPDATE pemilu_settings
 		SET closed_early_at = now(), updated_at = now()
-		RETURNING id, start_at, end_at, closed_early_at, created_at, updated_at
+		RETURNING id, start_at, end_at, closed_early_at, eligible_generations, created_at, updated_at
 	`
 	if err := r.db.GetContext(ctx, &s, query); err != nil {
 		return nil, err

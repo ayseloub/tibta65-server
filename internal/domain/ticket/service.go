@@ -13,9 +13,10 @@ var ErrRateLimited = errors.New("rate limited")
 const rateLimitWindow = 5 * time.Minute
 
 type CreateInput struct {
-	MemberID string
-	Subject  string
-	Message  string
+	MemberID         string
+	Subject          string
+	Message          string
+	ReportedMemberID string
 }
 
 type Service interface {
@@ -46,12 +47,18 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Ticket, error) {
 		return nil, ErrRateLimited
 	}
 
+	var reportedPtr *string
+	if in.ReportedMemberID != "" {
+		reportedPtr = &in.ReportedMemberID
+	}
+
 	t := &Ticket{
-		ID:       ulid.Make().String(),
-		MemberID: in.MemberID,
-		Subject:  in.Subject,
-		Message:  in.Message,
-		Status:   StatusOpen,
+		ID:               ulid.Make().String(),
+		MemberID:         in.MemberID,
+		Subject:          in.Subject,
+		Message:          in.Message,
+		Status:           StatusOpen,
+		ReportedMemberID: reportedPtr,
 	}
 	if err := s.repo.Create(ctx, t); err != nil {
 		return nil, err

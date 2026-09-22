@@ -1,0 +1,1 @@
+ALTER TABLE members ADD COLUMN profile_completed BOOLEAN NOT NULL DEFAULT true;

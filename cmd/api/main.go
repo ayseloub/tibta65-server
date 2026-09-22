@@ -18,6 +18,7 @@ import (
 	"github.com/Tibta65web/tibta65-server/internal/domain/backgroundcontent"
 	"github.com/Tibta65web/tibta65-server/internal/domain/berita"
 	"github.com/Tibta65web/tibta65-server/internal/domain/heroslide"
+	"github.com/Tibta65web/tibta65-server/internal/domain/memberactivation"
 	"github.com/Tibta65web/tibta65-server/pkg/database"
 	"github.com/Tibta65web/tibta65-server/pkg/logger"
 
@@ -138,7 +139,7 @@ func main() {
 	pemiluHandler := pemilu.NewHandler(pemiluService)
 
 	memberMgmtRepo := membermanagement.NewRepository(db)
-	memberMgmtService := membermanagement.NewService(memberMgmtRepo)
+	memberMgmtService := membermanagement.NewService(memberMgmtRepo, memberRepo)
 	memberMgmtHandler := membermanagement.NewHandler(memberMgmtService)
 
 	galleryRepo := gallery.NewRepository(db)
@@ -160,6 +161,11 @@ func main() {
 	heroSlideRepo := heroslide.NewRepository(db)
 	heroSlideService := heroslide.NewService(heroSlideRepo, fileStorage)
 	heroSlideHandler := heroslide.NewHandler(heroSlideService)
+
+	activationTokenRepo := memberactivation.NewRepository(db)
+	pendingChangeRepo := memberactivation.NewPendingChangeRepository(db)
+	activationService := memberactivation.NewService(activationTokenRepo, pendingChangeRepo, memberRepo, fileStorage, cfg.MemberJWTSecret, jwtExpiry, cfg.GoogleClientID)
+	activationHandler := memberactivation.NewHandler(activationService)
 
 	e := echo.New()
 	e.HideBanner = true
@@ -197,6 +203,7 @@ func main() {
 	ticket.RegisterRoutes(e, ticketHandler, cfg.MemberJWTSecret, cfg.JWTSecret)
 	berita.RegisterRoutes(e, beritaHandler, cfg.JWTSecret, cfg.MemberJWTSecret)
 	heroslide.RegisterRoutes(e, heroSlideHandler, cfg.JWTSecret)
+	memberactivation.RegisterRoutes(e, activationHandler, cfg.JWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {

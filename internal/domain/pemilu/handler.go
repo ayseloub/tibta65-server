@@ -20,8 +20,9 @@ func NewHandler(service Service) *Handler {
 }
 
 type settingsRequest struct {
-	StartAt string `json:"start_at"`
-	EndAt   string `json:"end_at"`
+	StartAt             string  `json:"start_at"`
+	EndAt               string  `json:"end_at"`
+	EligibleGenerations []int64 `json:"eligible_generations"`
 }
 
 type kandidatRequest struct {
@@ -84,7 +85,7 @@ func (h *Handler) UpdateSettings(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
 	}
-	result, err := h.service.UpdateSettings(c.Request().Context(), req.StartAt, req.EndAt)
+	result, err := h.service.UpdateSettings(c.Request().Context(), req.StartAt, req.EndAt, req.EligibleGenerations)
 	if err != nil {
 		return handleError(c, err)
 	}

@@ -36,7 +36,8 @@ type Repository interface {
 	FindAllPublic(ctx context.Context, page, limit int) ([]Berita, int, error)
 	FindBySlugPublic(ctx context.Context, slug string) (*Berita, error)
 
-	FindAllMember(ctx context.Context, page, limit int) ([]Berita, int, error)
+	FindAllMember(ctx context.Context, page, limit, memberGeneration int) ([]Berita, int, error)
+	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
 }
 
 type repository struct {
@@ -49,17 +50,18 @@ func NewRepository(db *sqlx.DB) Repository {
 
 const selectColumns = `
 	id, title, slug, description, image_url, visibility, status, is_highlight,
-	author_id, author_name, event_date, publish_at, expire_at, created_at, updated_at
+	author_id, author_name, event_date, target_generations, publish_at, expire_at, created_at, updated_at
 `
 
 func (r *repository) Create(ctx context.Context, b *Berita) error {
 	query := `
-		INSERT INTO beritas (id, title, slug, description, image_url, visibility, status, author_id, author_name, event_date, publish_at, expire_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO beritas (id, title, slug, description, image_url, visibility, status, author_id, author_name, event_date, target_generations, publish_at, expire_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING created_at, updated_at
 	`
 	return r.db.QueryRowContext(ctx, query,
-		b.ID, b.Title, b.Slug, b.Description, b.ImageURL, b.Visibility, b.Status, b.AuthorID, b.AuthorName, b.EventDate, b.PublishAt, b.ExpireAt,
+		b.ID, b.Title, b.Slug, b.Description, b.ImageURL, b.Visibility, b.Status, b.AuthorID, b.AuthorName,
+		b.EventDate, b.TargetGenerations, b.PublishAt, b.ExpireAt,
 	).Scan(&b.CreatedAt, &b.UpdatedAt)
 }
 
@@ -67,12 +69,13 @@ func (r *repository) Update(ctx context.Context, b *Berita) error {
 	query := `
 		UPDATE beritas
 		SET title = $1, slug = $2, description = $3, image_url = $4, visibility = $5,
-		    status = $6, event_date = $7, publish_at = $8, expire_at = $9, updated_at = now()
-		WHERE id = $10
+		    status = $6, event_date = $7, target_generations = $8, publish_at = $9, expire_at = $10, updated_at = now()
+		WHERE id = $11
 		RETURNING updated_at
 	`
 	err := r.db.QueryRowContext(ctx, query,
-		b.Title, b.Slug, b.Description, b.ImageURL, b.Visibility, b.Status, b.EventDate, b.PublishAt, b.ExpireAt, b.ID,
+		b.Title, b.Slug, b.Description, b.ImageURL, b.Visibility, b.Status, b.EventDate,
+		b.TargetGenerations, b.PublishAt, b.ExpireAt, b.ID,
 	).Scan(&b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -261,20 +264,35 @@ func (r *repository) FindBySlugPublic(ctx context.Context, slug string) (*Berita
 	return &b, nil
 }
 
-func (r *repository) FindAllMember(ctx context.Context, page, limit int) ([]Berita, int, error) {
+func (r *repository) FindAllMember(ctx context.Context, page, limit, memberGeneration int) ([]Berita, int, error) {
 	where := " WHERE status = 'published' AND visibility = 'internal'" + scheduleFilter
+	args := []interface{}{}
+	argN := 1
+
+	if memberGeneration > 0 {
+		where += fmt.Sprintf(" AND (target_generations IS NULL OR array_length(target_generations, 1) IS NULL OR $%d = ANY(target_generations))", argN)
+		args = append(args, memberGeneration)
+		argN++
+	}
 
 	var total int
-	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM beritas"+where); err != nil {
+	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM beritas"+where, args...); err != nil {
 		return nil, 0, err
 	}
 
 	offset := (page - 1) * limit
+	args = append(args, limit, offset)
 	items := []Berita{}
 	query := "SELECT " + selectColumns + " FROM beritas" + where +
-		" ORDER BY event_date DESC, created_at DESC LIMIT $1 OFFSET $2"
-	if err := r.db.SelectContext(ctx, &items, query, limit, offset); err != nil {
+		fmt.Sprintf(" ORDER BY event_date DESC, created_at DESC LIMIT $%d OFFSET $%d", argN, argN+1)
+	if err := r.db.SelectContext(ctx, &items, query, args...); err != nil {
 		return nil, 0, err
 	}
 	return items, total, nil
+}
+
+func (r *repository) GetMemberGeneration(ctx context.Context, memberID string) (int, error) {
+	var generation int
+	err := r.db.GetContext(ctx, &generation, "SELECT generation FROM members WHERE id = $1", memberID)
+	return generation, err
 }

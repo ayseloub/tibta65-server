@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
 
 	"github.com/Tibta65web/tibta65-server/pkg/storage"
@@ -22,27 +23,29 @@ const (
 )
 
 type CreateInput struct {
-	Title       string
-	Description string
-	Visibility  string
-	Status      string
-	EventDate   time.Time
-	PublishAt   *time.Time
-	ExpireAt    *time.Time
-	ImageHeader *multipart.FileHeader
-	AuthorID    string
-	AuthorName  string
+	Title             string
+	Description       string
+	Visibility        string
+	Status            string
+	EventDate         time.Time
+	TargetGenerations []int64
+	PublishAt         *time.Time
+	ExpireAt          *time.Time
+	ImageHeader       *multipart.FileHeader
+	AuthorID          string
+	AuthorName        string
 }
 
 type UpdateInput struct {
-	Title       string
-	Description string
-	Visibility  string
-	Status      string
-	EventDate   time.Time
-	PublishAt   *time.Time
-	ExpireAt    *time.Time
-	ImageHeader *multipart.FileHeader
+	Title             string
+	Description       string
+	Visibility        string
+	Status            string
+	EventDate         time.Time
+	TargetGenerations []int64
+	PublishAt         *time.Time
+	ExpireAt          *time.Time
+	ImageHeader       *multipart.FileHeader
 }
 
 type Service interface {
@@ -58,8 +61,9 @@ type Service interface {
 	FindAllPublic(ctx context.Context, page, limit int) ([]Berita, int, error)
 	FindBySlugPublic(ctx context.Context, slug string) (*Berita, error)
 
-	FindAllMember(ctx context.Context, page, limit int) ([]Berita, int, error)
+	FindAllMember(ctx context.Context, page, limit, memberGeneration int) ([]Berita, int, error)
 	FindBySlugMember(ctx context.Context, slug string) (*Berita, error)
+	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
 }
 
 type service struct {
@@ -133,18 +137,19 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Berita, error) {
 
 	authorID := in.AuthorID
 	b := &Berita{
-		ID:          ulid.Make().String(),
-		Title:       in.Title,
-		Slug:        slug,
-		Description: in.Description,
-		ImageURL:    imageURL,
-		Visibility:  in.Visibility,
-		Status:      in.Status,
-		AuthorID:    &authorID,
-		AuthorName:  in.AuthorName,
-		EventDate:   in.EventDate,
-		PublishAt:   in.PublishAt,
-		ExpireAt:    in.ExpireAt,
+		ID:                ulid.Make().String(),
+		Title:             in.Title,
+		Slug:              slug,
+		Description:       in.Description,
+		ImageURL:          imageURL,
+		Visibility:        in.Visibility,
+		Status:            in.Status,
+		AuthorID:          &authorID,
+		AuthorName:        in.AuthorName,
+		EventDate:         in.EventDate,
+		TargetGenerations: pq.Int64Array(in.TargetGenerations),
+		PublishAt:         in.PublishAt,
+		ExpireAt:          in.ExpireAt,
 	}
 	if err := s.repo.Create(ctx, b); err != nil {
 		return nil, err
@@ -194,6 +199,7 @@ func (s *service) Update(ctx context.Context, id string, in UpdateInput) (*Berit
 	existing.Visibility = in.Visibility
 	existing.Status = in.Status
 	existing.EventDate = in.EventDate
+	existing.TargetGenerations = pq.Int64Array(in.TargetGenerations)
 	existing.PublishAt = in.PublishAt
 	existing.ExpireAt = in.ExpireAt
 
@@ -253,8 +259,8 @@ func (s *service) FindBySlugPublic(ctx context.Context, slug string) (*Berita, e
 	return s.repo.FindBySlugPublic(ctx, slug)
 }
 
-func (s *service) FindAllMember(ctx context.Context, page, limit int) ([]Berita, int, error) {
-	return s.repo.FindAllMember(ctx, page, limit)
+func (s *service) FindAllMember(ctx context.Context, page, limit, memberGeneration int) ([]Berita, int, error) {
+	return s.repo.FindAllMember(ctx, page, limit, memberGeneration)
 }
 
 func (s *service) FindBySlugMember(ctx context.Context, slug string) (*Berita, error) {
@@ -272,4 +278,8 @@ func (s *service) FindBySlugMember(ctx context.Context, slug string) (*Berita, e
 		return nil, ErrNotFound
 	}
 	return b, nil
+}
+
+func (s *service) GetMemberGeneration(ctx context.Context, memberID string) (int, error) {
+	return s.repo.GetMemberGeneration(ctx, memberID)
 }

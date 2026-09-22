@@ -1,6 +1,10 @@
 package pemilu
 
-import "time"
+import (
+	"time"
+
+	"github.com/lib/pq"
+)
 
 type Kandidat struct {
 	ID        string    `db:"id" json:"id"`
@@ -15,10 +19,11 @@ type Kandidat struct {
 }
 
 type Settings struct {
-	ID            string     `db:"id" json:"id"`
-	StartAt       time.Time  `db:"start_at" json:"start_at"`
-	EndAt         time.Time  `db:"end_at" json:"end_at"`
-	ClosedEarlyAt *time.Time `db:"closed_early_at" json:"closed_early_at"`
-	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
-	UpdatedAt     time.Time  `db:"updated_at" json:"updated_at"`
+	ID                  string        `db:"id" json:"id"`
+	StartAt             time.Time     `db:"start_at" json:"start_at"`
+	EndAt               time.Time     `db:"end_at" json:"end_at"`
+	ClosedEarlyAt       *time.Time    `db:"closed_early_at" json:"closed_early_at"`
+	EligibleGenerations pq.Int64Array `db:"eligible_generations" json:"eligible_generations"`
+	CreatedAt           time.Time     `db:"created_at" json:"created_at"`
+	UpdatedAt           time.Time     `db:"updated_at" json:"updated_at"`
 }

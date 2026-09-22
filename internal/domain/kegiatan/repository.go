@@ -17,13 +17,14 @@ var (
 )
 
 type ListFilter struct {
-	Search     string
-	KordaID    string
-	KategoriID string
-	Visibility string
-	Scheduled  bool // true = terapin filter publish_at/expire_at (dipakai publik & member, BUKAN admin)
-	Page       int
-	Limit      int
+	Search           string
+	KordaID          string
+	KategoriID       string
+	Visibility       string
+	MemberGeneration int
+	Scheduled        bool
+	Page             int
+	Limit            int
 }
 
 type Repository interface {
@@ -32,6 +33,7 @@ type Repository interface {
 	Create(ctx context.Context, k *Kegiatan) error
 	Update(ctx context.Context, k *Kegiatan) error
 	Delete(ctx context.Context, slug string) error
+	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
 }
 
 type repository struct {
@@ -46,7 +48,7 @@ const baseSelect = `
 	SELECT
 		k.id, k.slug, k.title, k.date, k.korda_id, ko.name AS korda_name,
 		k.kategori_id, kt.name AS kategori_name, k.location, k.image_url,
-		k.description, k.visibility, k.publish_at, k.expire_at, k.created_at, k.updated_at
+		k.description, k.visibility, k.target_generations, k.publish_at, k.expire_at, k.created_at, k.updated_at
 	FROM kegiatans k
 	JOIN kordas ko ON ko.id = k.korda_id
 	JOIN kategoris kt ON kt.id = k.kategori_id
@@ -81,6 +83,11 @@ func (r *repository) FindAll(ctx context.Context, f ListFilter) ([]Kegiatan, int
 	}
 	if f.Scheduled {
 		where += scheduleFilter
+	}
+	if f.MemberGeneration > 0 {
+		where += fmt.Sprintf(" AND (k.target_generations IS NULL OR array_length(k.target_generations, 1) IS NULL OR $%d = ANY(k.target_generations))", argPos)
+		args = append(args, f.MemberGeneration)
+		argPos++
 	}
 
 	var total int
@@ -119,12 +126,13 @@ func (r *repository) FindBySlug(ctx context.Context, slug string) (*Kegiatan, er
 
 func (r *repository) Create(ctx context.Context, k *Kegiatan) error {
 	query := `
-		INSERT INTO kegiatans (id, slug, title, date, korda_id, kategori_id, location, image_url, description, visibility, publish_at, expire_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO kegiatans (id, slug, title, date, korda_id, kategori_id, location, image_url, description, visibility, target_generations, publish_at, expire_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING created_at, updated_at
 	`
 	err := r.db.QueryRowContext(ctx, query,
-		k.ID, k.Slug, k.Title, k.Date, k.KordaID, k.KategoriID, k.Location, k.ImageURL, k.Description, k.Visibility, k.PublishAt, k.ExpireAt,
+		k.ID, k.Slug, k.Title, k.Date, k.KordaID, k.KategoriID, k.Location, k.ImageURL, k.Description,
+		k.Visibility, k.TargetGenerations, k.PublishAt, k.ExpireAt,
 	).Scan(&k.CreatedAt, &k.UpdatedAt)
 
 	if isDuplicateKeyError(err) {
@@ -138,12 +146,13 @@ func (r *repository) Update(ctx context.Context, k *Kegiatan) error {
 		UPDATE kegiatans
 		SET title = $1, date = $2, korda_id = $3, kategori_id = $4,
 		    location = $5, image_url = $6, description = $7, visibility = $8,
-		    publish_at = $9, expire_at = $10, updated_at = now()
-		WHERE slug = $11
+		    target_generations = $9, publish_at = $10, expire_at = $11, updated_at = now()
+		WHERE slug = $12
 		RETURNING updated_at
 	`
 	err := r.db.QueryRowContext(ctx, query,
-		k.Title, k.Date, k.KordaID, k.KategoriID, k.Location, k.ImageURL, k.Description, k.Visibility, k.PublishAt, k.ExpireAt, k.Slug,
+		k.Title, k.Date, k.KordaID, k.KategoriID, k.Location, k.ImageURL, k.Description,
+		k.Visibility, k.TargetGenerations, k.PublishAt, k.ExpireAt, k.Slug,
 	).Scan(&k.UpdatedAt)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -162,6 +171,12 @@ func (r *repository) Delete(ctx context.Context, slug string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *repository) GetMemberGeneration(ctx context.Context, memberID string) (int, error) {
+	var generation int
+	err := r.db.GetContext(ctx, &generation, "SELECT generation FROM members WHERE id = $1", memberID)
+	return generation, err
 }
 
 func isDuplicateKeyError(err error) bool {

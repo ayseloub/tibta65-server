@@ -13,6 +13,7 @@ import (
 
 var ErrValidation = errors.New("data tidak valid")
 var ErrNotApproved = errors.New("akun kamu belum disetujui admin, silakan lengkapi profil terlebih dahulu")
+var ErrGenerationNotEligible = errors.New("generasimu tidak termasuk yang berhak memilih pada periode ini")
 
 type KandidatResult struct {
 	Kandidat
@@ -42,6 +43,7 @@ type MemberKandidat struct {
 type MemberDashboardResult struct {
 	Status          string           `json:"status"`
 	EndAt           time.Time        `json:"end_at"`
+	CanVote         bool             `json:"can_vote"`
 	HasVoted        bool             `json:"has_voted"`
 	VotedKandidatID *string          `json:"voted_kandidat_id"`
 	Kandidats       []MemberKandidat `json:"kandidats"`
@@ -57,7 +59,7 @@ type KandidatInput struct {
 
 type Service interface {
 	Dashboard(ctx context.Context) (*DashboardResult, error)
-	UpdateSettings(ctx context.Context, startAt, endAt string) (*Settings, error)
+	UpdateSettings(ctx context.Context, startAt, endAt string, eligibleGenerations []int64) (*Settings, error)
 	CloseEarly(ctx context.Context) (*Settings, error)
 	GetKandidat(ctx context.Context, id string) (*Kandidat, error)
 	CreateKandidat(ctx context.Context, in KandidatInput) (*Kandidat, error)
@@ -140,11 +142,11 @@ func (s *service) Dashboard(ctx context.Context) (*DashboardResult, error) {
 	}, nil
 }
 
-func (s *service) UpdateSettings(ctx context.Context, startAt, endAt string) (*Settings, error) {
+func (s *service) UpdateSettings(ctx context.Context, startAt, endAt string, eligibleGenerations []int64) (*Settings, error) {
 	if startAt == "" || endAt == "" {
 		return nil, ErrValidation
 	}
-	return s.repo.UpdateSettings(ctx, startAt, endAt)
+	return s.repo.UpdateSettings(ctx, startAt, endAt, eligibleGenerations)
 }
 
 func (s *service) CloseEarly(ctx context.Context) (*Settings, error) {
@@ -255,6 +257,22 @@ func (s *service) MemberDashboard(ctx context.Context, memberID string) (*Member
 		return nil, err
 	}
 
+	canVote := status == "active"
+	if canVote && len(settings.EligibleGenerations) > 0 {
+		memberGen, err := s.repo.GetMemberGeneration(ctx, memberID)
+		if err != nil {
+			return nil, err
+		}
+		eligible := false
+		for _, g := range settings.EligibleGenerations {
+			if int(g) == memberGen {
+				eligible = true
+				break
+			}
+		}
+		canVote = eligible
+	}
+
 	showResults := status == "closed"
 
 	result := make([]MemberKandidat, len(kandidats))
@@ -295,5 +313,23 @@ func (s *service) CastVote(ctx context.Context, memberID, kandidatID string) err
 	if computeStatus(settings) != "active" {
 		return ErrPemiluNotActive
 	}
+
+	if len(settings.EligibleGenerations) > 0 {
+		generation, err := s.repo.GetMemberGeneration(ctx, memberID)
+		if err != nil {
+			return err
+		}
+		eligible := false
+		for _, g := range settings.EligibleGenerations {
+			if int(g) == generation {
+				eligible = true
+				break
+			}
+		}
+		if !eligible {
+			return ErrGenerationNotEligible
+		}
+	}
+
 	return s.repo.CreateVote(ctx, memberID, kandidatID)
 }
