@@ -2,19 +2,31 @@ ALTER TABLE members RENAME COLUMN member_number TO legacy_member_number;
 ALTER TABLE members ALTER COLUMN legacy_member_number DROP NOT NULL;
 ALTER TABLE members RENAME CONSTRAINT members_member_number_unique TO members_legacy_member_number_unique;
 
-ALTER TABLE members ADD COLUMN member_number VARCHAR(20) UNIQUE NOT NULL;
+ALTER TABLE members ADD COLUMN member_number VARCHAR(20) NULL;
+
 ALTER TABLE members ADD COLUMN username VARCHAR(50) UNIQUE NULL;
 ALTER TABLE members ADD COLUMN generation INT NOT NULL DEFAULT 1;
 ALTER TABLE members ADD COLUMN parent_member_id CHAR(26) NULL REFERENCES members(id);
-
 ALTER TABLE members ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active';
-
 ALTER TABLE members ADD COLUMN nama_suci VARCHAR(100) NULL;
 ALTER TABLE members ADD COLUMN agama VARCHAR(50) NULL;
 ALTER TABLE members ADD COLUMN nrp VARCHAR(50) NULL;
 ALTER TABLE members ADD COLUMN no_ak VARCHAR(50) NULL;
 ALTER TABLE members ADD COLUMN pangkat_terakhir VARCHAR(100) NULL;
 ALTER TABLE members ADD COLUMN legacy_identifier_raw TEXT NULL;
+ALTER TABLE members ADD COLUMN profile_completed BOOLEAN NOT NULL DEFAULT true;
+
+WITH numbered AS (
+	SELECT id, ROW_NUMBER() OVER (ORDER BY created_at) AS rn
+	FROM members
+)
+UPDATE members m
+SET member_number = '65-G01-' || LPAD(numbered.rn::text, 4, '0')
+FROM numbered
+WHERE m.id = numbered.id;
+
+ALTER TABLE members ALTER COLUMN member_number SET NOT NULL;
+ALTER TABLE members ADD CONSTRAINT members_member_number_key UNIQUE (member_number);
 
 CREATE INDEX idx_members_parent_id ON members(parent_member_id);
 CREATE INDEX idx_members_generation ON members(generation);
