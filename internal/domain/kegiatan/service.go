@@ -66,6 +66,7 @@ type Service interface {
 	Update(ctx context.Context, in UpdateInput) (*Kegiatan, error)
 	Delete(ctx context.Context, slug string) error
 	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
+	GetMemberStatus(ctx context.Context, memberID string) (string, error)
 }
 
 type service struct {
@@ -219,4 +220,8 @@ func (s *service) Delete(ctx context.Context, slugParam string) error {
 
 func (s *service) GetMemberGeneration(ctx context.Context, memberID string) (int, error) {
 	return s.repo.GetMemberGeneration(ctx, memberID)
+}
+
+func (s *service) GetMemberStatus(ctx context.Context, memberID string) (string, error) {
+	return s.repo.GetMemberStatus(ctx, memberID)
 }

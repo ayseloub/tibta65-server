@@ -34,6 +34,7 @@ type Repository interface {
 	Update(ctx context.Context, k *Kegiatan) error
 	Delete(ctx context.Context, slug string) error
 	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
+	GetMemberStatus(ctx context.Context, memberID string) (string, error)
 }
 
 type repository struct {
@@ -182,4 +183,10 @@ func (r *repository) GetMemberGeneration(ctx context.Context, memberID string) (
 func isDuplicateKeyError(err error) bool {
 	var pqErr *pq.Error
 	return errors.As(err, &pqErr) && pqErr.Code == "23505"
+}
+
+func (r *repository) GetMemberStatus(ctx context.Context, memberID string) (string, error) {
+	var status string
+	err := r.db.GetContext(ctx, &status, "SELECT status FROM members WHERE id = $1", memberID)
+	return status, err
 }

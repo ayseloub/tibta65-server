@@ -38,6 +38,7 @@ type Repository interface {
 
 	FindAllMember(ctx context.Context, page, limit, memberGeneration int) ([]Berita, int, error)
 	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
+	GetMemberStatus(ctx context.Context, memberID string) (string, error)
 }
 
 type repository struct {
@@ -295,4 +296,10 @@ func (r *repository) GetMemberGeneration(ctx context.Context, memberID string) (
 	var generation int
 	err := r.db.GetContext(ctx, &generation, "SELECT generation FROM members WHERE id = $1", memberID)
 	return generation, err
+}
+
+func (r *repository) GetMemberStatus(ctx context.Context, memberID string) (string, error) {
+	var status string
+	err := r.db.GetContext(ctx, &status, "SELECT status FROM members WHERE id = $1", memberID)
+	return status, err
 }

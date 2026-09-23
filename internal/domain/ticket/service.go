@@ -8,7 +8,10 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-var ErrRateLimited = errors.New("rate limited")
+var (
+	ErrRateLimited = errors.New("rate limited")
+	ErrNotApproved = errors.New("akun kamu masih menunggu persetujuan admin")
+)
 
 const rateLimitWindow = 5 * time.Minute
 
@@ -39,6 +42,14 @@ func NewService(repo Repository) Service {
 }
 
 func (s *service) Create(ctx context.Context, in CreateInput) (*Ticket, error) {
+	status, err := s.repo.GetMemberStatus(ctx, in.MemberID)
+	if err != nil {
+		return nil, err
+	}
+	if status != "active" {
+		return nil, ErrNotApproved
+	}
+
 	count, err := s.repo.CountRecentByMember(ctx, in.MemberID, time.Now().Add(-rateLimitWindow))
 	if err != nil {
 		return nil, err

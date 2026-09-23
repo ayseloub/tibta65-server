@@ -26,7 +26,7 @@ type createRequest struct {
 }
 
 func (h *Handler) Create(c echo.Context) error {
-	memberID := c.Get(appMiddleware.ContextKeyMemberID).(string)
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 
 	var req createRequest
 	if err := c.Bind(&req); err != nil {
@@ -43,13 +43,16 @@ func (h *Handler) Create(c echo.Context) error {
 		if errors.Is(err, ErrRateLimited) {
 			return response.Error(c, http.StatusTooManyRequests, "Tunggu 5 menit sebelum mengirim tiket baru")
 		}
+		if errors.Is(err, ErrNotApproved) {
+			return response.Error(c, http.StatusForbidden, err.Error())
+		}
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
 	return response.Success(c, http.StatusCreated, "Tiket berhasil dikirim", result)
 }
 
 func (h *Handler) ListMine(c echo.Context) error {
-	memberID := c.Get(appMiddleware.ContextKeyMemberID).(string)
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	if page < 1 {
@@ -70,7 +73,7 @@ func (h *Handler) ListMine(c echo.Context) error {
 }
 
 func (h *Handler) GetMine(c echo.Context) error {
-	memberID := c.Get(appMiddleware.ContextKeyMemberID).(string)
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 	id := c.Param("id")
 
 	result, err := h.service.GetMine(c.Request().Context(), id, memberID)
@@ -83,9 +86,25 @@ func (h *Handler) GetMine(c echo.Context) error {
 	return response.Success(c, http.StatusOK, "Berhasil mengambil data", result)
 }
 
+func (h *Handler) UnreadCount(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
+	count, err := h.service.CountUnreadByMember(c.Request().Context(), memberID)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil mengambil data", map[string]int{"unread_count": count})
+}
+
+func (h *Handler) MarkRead(c echo.Context) error {
+	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
+	id := c.Param("id")
+	if err := h.service.MarkReadByMember(c.Request().Context(), id, memberID); err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	return response.Success(c, http.StatusOK, "Berhasil menandai dibaca", nil)
+}
+
 func (h *Handler) ListAdmin(c echo.Context) error {
-	kordaID := c.QueryParam("korda_id")
-	status := c.QueryParam("status")
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	if page < 1 {
@@ -95,7 +114,7 @@ func (h *Handler) ListAdmin(c echo.Context) error {
 		limit = 10
 	}
 
-	items, total, err := h.service.ListAdmin(c.Request().Context(), kordaID, status, page, limit)
+	items, total, err := h.service.ListAdmin(c.Request().Context(), c.QueryParam("korda_id"), c.QueryParam("status"), page, limit)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
@@ -128,7 +147,7 @@ func (h *Handler) Reply(c echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
 	}
 	if req.AdminReply == "" {
-		return response.Error(c, http.StatusBadRequest, "Balasan wajib diisi")
+		return response.Error(c, http.StatusBadRequest, "Balasan tidak boleh kosong")
 	}
 
 	result, err := h.service.Reply(c.Request().Context(), id, req.AdminReply)
@@ -139,26 +158,4 @@ func (h *Handler) Reply(c echo.Context) error {
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
 	return response.Success(c, http.StatusOK, "Balasan berhasil dikirim", result)
-}
-
-func (h *Handler) MarkRead(c echo.Context) error {
-	memberID := c.Get(appMiddleware.ContextKeyMemberID).(string)
-	id := c.Param("id")
-
-	if err := h.service.MarkReadByMember(c.Request().Context(), id, memberID); err != nil {
-		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
-	}
-	return response.Success(c, http.StatusOK, "Tiket ditandai sudah dibaca", nil)
-}
-
-func (h *Handler) UnreadCount(c echo.Context) error {
-	memberID := c.Get(appMiddleware.ContextKeyMemberID).(string)
-
-	count, err := h.service.CountUnreadByMember(c.Request().Context(), memberID)
-	if err != nil {
-		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
-	}
-	return response.Success(c, http.StatusOK, "Berhasil mengambil data", map[string]interface{}{
-		"unread_count": count,
-	})
 }

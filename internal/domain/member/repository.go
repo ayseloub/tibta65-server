@@ -172,13 +172,15 @@ func (r *repository) NextMemberNumber(ctx context.Context, generation int) (stri
 func (r *repository) Create(ctx context.Context, m *Member) error {
 	query := `
 		INSERT INTO members (id, full_name, email, password_hash, google_id, avatar_url, korda_id,
-			member_number, generation, parent_member_id, status, profile_completed)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			member_number, generation, parent_member_id, status, profile_completed,
+			nama_suci, agama, nrp, no_ak, pangkat_terakhir)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		RETURNING created_at, updated_at
 	`
 	err := r.db.QueryRowContext(ctx, query,
 		m.ID, m.FullName, m.Email, m.PasswordHash, m.GoogleID, m.AvatarURL, m.KordaID,
 		m.MemberNumber, m.Generation, m.ParentMemberID, m.Status, m.ProfileCompleted,
+		m.NamaSuci, m.Agama, m.NRP, m.NoAK, m.PangkatTerakhir,
 	).Scan(&m.CreatedAt, &m.UpdatedAt)
 
 	if err != nil {
@@ -252,11 +254,15 @@ func (r *repository) UpdatePassword(ctx context.Context, id, passwordHash string
 func (r *repository) UpdateProfile(ctx context.Context, m *Member) error {
 	query := `
 		UPDATE members
-		SET full_name = $1, phone = $2, korda_id = $3, address = $4, updated_at = now()
-		WHERE id = $5
+		SET full_name = $1, phone = $2, korda_id = $3, address = $4,
+		    nama_suci = $5, agama = $6, nrp = $7, no_ak = $8, pangkat_terakhir = $9, updated_at = now()
+		WHERE id = $10
 		RETURNING updated_at
 	`
-	err := r.db.QueryRowContext(ctx, query, m.FullName, m.Phone, m.KordaID, m.Address, m.ID).Scan(&m.UpdatedAt)
+	err := r.db.QueryRowContext(ctx, query,
+		m.FullName, m.Phone, m.KordaID, m.Address,
+		m.NamaSuci, m.Agama, m.NRP, m.NoAK, m.PangkatTerakhir, m.ID,
+	).Scan(&m.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}

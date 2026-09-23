@@ -228,6 +228,15 @@ func (h *Handler) GetPublic(c echo.Context) error {
 
 func (h *Handler) ListInternal(c echo.Context) error {
 	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
+
+	memberStatus, err := h.service.GetMemberStatus(c.Request().Context(), memberID)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	if memberStatus != "active" {
+		return response.Error(c, http.StatusForbidden, "Akun kamu masih menunggu persetujuan admin")
+	}
+
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 
@@ -245,8 +254,16 @@ func (h *Handler) ListInternal(c echo.Context) error {
 
 func (h *Handler) GetInternal(c echo.Context) error {
 	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
-	id := c.Param("id")
 
+	memberStatus, err := h.service.GetMemberStatus(c.Request().Context(), memberID)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	if memberStatus != "active" {
+		return response.Error(c, http.StatusForbidden, "Akun kamu masih menunggu persetujuan admin")
+	}
+
+	id := c.Param("id")
 	result, err := h.service.Get(c.Request().Context(), id)
 	if err != nil {
 		return handleError(c, err)

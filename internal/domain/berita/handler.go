@@ -94,6 +94,15 @@ func (h *Handler) Create(c echo.Context) error {
 
 func (h *Handler) ListMember(c echo.Context) error {
 	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
+
+	memberStatus, err := h.service.GetMemberStatus(c.Request().Context(), memberID)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	if memberStatus != "active" {
+		return response.Error(c, http.StatusForbidden, "Akun kamu masih menunggu persetujuan admin")
+	}
+
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	if page < 1 {
@@ -120,8 +129,16 @@ func (h *Handler) ListMember(c echo.Context) error {
 
 func (h *Handler) GetMember(c echo.Context) error {
 	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
-	slug := c.Param("slug")
 
+	memberStatus, err := h.service.GetMemberStatus(c.Request().Context(), memberID)
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
+	}
+	if memberStatus != "active" {
+		return response.Error(c, http.StatusForbidden, "Akun kamu masih menunggu persetujuan admin")
+	}
+
+	slug := c.Param("slug")
 	result, err := h.service.FindBySlugMember(c.Request().Context(), slug)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {

@@ -30,6 +30,7 @@ var (
 	ErrNotDirectChild            = errors.New("kamu hanya bisa menghapus akun yang terdaftar menggunakan nomor indukmu")
 	ErrProfileAlreadyCompleted   = errors.New("profil sudah pernah dilengkapi sebelumnya")
 	ErrAccountNotClaimed         = errors.New("akun ini belum diaktivasi, silakan gunakan halaman Aktivasi Akun dengan token dari admin")
+	ErrParentNotVerified         = errors.New("nomor induk orang tua belum terverifikasi (masih menunggu persetujuan atau ditolak)")
 
 	otpExpiry = 10 * time.Minute
 )
@@ -43,6 +44,11 @@ type RegisterInput struct {
 	Address            string
 	Generation         int
 	ParentMemberNumber string
+	NamaSuci           string
+	Agama              string
+	NRP                string
+	NoAK               string
+	PangkatTerakhir    string
 }
 
 type LoginResult struct {
@@ -82,10 +88,15 @@ type service struct {
 }
 
 type UpdateProfileInput struct {
-	FullName string
-	Phone    string
-	KordaID  string
-	Address  string
+	FullName        string
+	Phone           string
+	KordaID         string
+	Address         string
+	NamaSuci        string
+	Agama           string
+	NRP             string
+	NoAK            string
+	PangkatTerakhir string
 }
 
 func (s *service) UpdateProfile(ctx context.Context, memberID string, in UpdateProfileInput) (*Member, error) {
@@ -93,7 +104,7 @@ func (s *service) UpdateProfile(ctx context.Context, memberID string, in UpdateP
 		return nil, ErrValidation
 	}
 
-	var phonePtr, addressPtr, kordaPtr *string
+	var phonePtr, addressPtr, kordaPtr, namaSuciPtr, agamaPtr, nrpPtr, noAkPtr, pangkatPtr *string
 	if in.Phone != "" {
 		phonePtr = &in.Phone
 	}
@@ -103,8 +114,26 @@ func (s *service) UpdateProfile(ctx context.Context, memberID string, in UpdateP
 	if in.KordaID != "" {
 		kordaPtr = &in.KordaID
 	}
+	if in.NamaSuci != "" {
+		namaSuciPtr = &in.NamaSuci
+	}
+	if in.Agama != "" {
+		agamaPtr = &in.Agama
+	}
+	if in.NRP != "" {
+		nrpPtr = &in.NRP
+	}
+	if in.NoAK != "" {
+		noAkPtr = &in.NoAK
+	}
+	if in.PangkatTerakhir != "" {
+		pangkatPtr = &in.PangkatTerakhir
+	}
 
-	m := &Member{ID: memberID, FullName: in.FullName, Phone: phonePtr, Address: addressPtr, KordaID: kordaPtr}
+	m := &Member{
+		ID: memberID, FullName: in.FullName, Phone: phonePtr, Address: addressPtr, KordaID: kordaPtr,
+		NamaSuci: namaSuciPtr, Agama: agamaPtr, NRP: nrpPtr, NoAK: noAkPtr, PangkatTerakhir: pangkatPtr,
+	}
 	if err := s.repo.UpdateProfile(ctx, m); err != nil {
 		return nil, err
 	}
@@ -255,6 +284,9 @@ func (s *service) Register(ctx context.Context, in RegisterInput) (*Member, erro
 		if parent.Generation != generation-1 {
 			return nil, ErrParentGenerationMismatch
 		}
+		if !isLegitParentStatus(parent.Status) {
+			return nil, ErrParentNotVerified
+		}
 		parentID = &parent.ID
 	}
 
@@ -277,6 +309,23 @@ func (s *service) Register(ctx context.Context, in RegisterInput) (*Member, erro
 		addressPtr = &in.Address
 	}
 
+	var namaSuciPtr, agamaPtr, nrpPtr, noAkPtr, pangkatPtr *string
+	if in.NamaSuci != "" {
+		namaSuciPtr = &in.NamaSuci
+	}
+	if in.Agama != "" {
+		agamaPtr = &in.Agama
+	}
+	if in.NRP != "" {
+		nrpPtr = &in.NRP
+	}
+	if in.NoAK != "" {
+		noAkPtr = &in.NoAK
+	}
+	if in.PangkatTerakhir != "" {
+		pangkatPtr = &in.PangkatTerakhir
+	}
+
 	kordaID := in.KordaID
 	m := &Member{
 		ID:               ulid.Make().String(),
@@ -291,6 +340,11 @@ func (s *service) Register(ctx context.Context, in RegisterInput) (*Member, erro
 		ParentMemberID:   parentID,
 		Status:           StatusPendingReview,
 		ProfileCompleted: true,
+		NamaSuci:         namaSuciPtr,
+		Agama:            agamaPtr,
+		NRP:              nrpPtr,
+		NoAK:             noAkPtr,
+		PangkatTerakhir:  pangkatPtr,
 	}
 
 	if err := s.repo.Create(ctx, m); err != nil {
@@ -556,4 +610,8 @@ func (s *service) ResetPassword(ctx context.Context, emailAddr, code, newPasswor
 
 	_ = s.otpRepo.DeleteByMemberID(ctx, m.ID, OTPPurposeResetPassword)
 	return nil
+}
+
+func isLegitParentStatus(status string) bool {
+	return status == StatusActive || status == StatusUnclaimed || status == StatusDeceased
 }

@@ -22,6 +22,7 @@ type Repository interface {
 	Reply(ctx context.Context, id, adminReply string) (*Ticket, error)
 	MarkReadByMember(ctx context.Context, id, memberID string) error
 	CountUnreadByMember(ctx context.Context, memberID string) (int, error)
+	GetMemberStatus(ctx context.Context, memberID string) (string, error)
 }
 
 type repository struct {
@@ -168,4 +169,10 @@ func (r *repository) CountUnreadByMember(ctx context.Context, memberID string) (
 	`
 	err := r.db.GetContext(ctx, &count, query, memberID)
 	return count, err
+}
+
+func (r *repository) GetMemberStatus(ctx context.Context, memberID string) (string, error) {
+	var status string
+	err := r.db.GetContext(ctx, &status, "SELECT status FROM members WHERE id = $1", memberID)
+	return status, err
 }

@@ -64,6 +64,7 @@ type Service interface {
 	FindAllMember(ctx context.Context, page, limit, memberGeneration int) ([]Berita, int, error)
 	FindBySlugMember(ctx context.Context, slug string) (*Berita, error)
 	GetMemberGeneration(ctx context.Context, memberID string) (int, error)
+	GetMemberStatus(ctx context.Context, memberID string) (string, error)
 }
 
 type service struct {
@@ -282,4 +283,8 @@ func (s *service) FindBySlugMember(ctx context.Context, slug string) (*Berita, e
 
 func (s *service) GetMemberGeneration(ctx context.Context, memberID string) (int, error) {
 	return s.repo.GetMemberGeneration(ctx, memberID)
+}
+
+func (s *service) GetMemberStatus(ctx context.Context, memberID string) (string, error) {
+	return s.repo.GetMemberStatus(ctx, memberID)
 }

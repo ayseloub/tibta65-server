@@ -27,6 +27,11 @@ type registerRequest struct {
 	Address            string `json:"address"`
 	Generation         int    `json:"generation"`
 	ParentMemberNumber string `json:"parent_member_number"`
+	NamaSuci           string `json:"nama_suci"`
+	Agama              string `json:"agama"`
+	NRP                string `json:"nrp"`
+	NoAK               string `json:"no_ak"`
+	PangkatTerakhir    string `json:"pangkat_terakhir"`
 }
 
 type loginRequest struct {
@@ -49,10 +54,15 @@ type resetPasswordRequest struct {
 }
 
 type updateProfileRequest struct {
-	FullName string `json:"full_name"`
-	Phone    string `json:"phone"`
-	KordaID  string `json:"korda_id"`
-	Address  string `json:"address"`
+	FullName        string `json:"full_name"`
+	Phone           string `json:"phone"`
+	KordaID         string `json:"korda_id"`
+	Address         string `json:"address"`
+	NamaSuci        string `json:"nama_suci"`
+	Agama           string `json:"agama"`
+	NRP             string `json:"nrp"`
+	NoAK            string `json:"no_ak"`
+	PangkatTerakhir string `json:"pangkat_terakhir"`
 }
 
 type changePasswordRequest struct {
@@ -91,6 +101,7 @@ func (h *Handler) UpdateProfile(c echo.Context) error {
 
 	m, err := h.service.UpdateProfile(c.Request().Context(), memberID, UpdateProfileInput{
 		FullName: req.FullName, Phone: req.Phone, KordaID: req.KordaID, Address: req.Address,
+		NamaSuci: req.NamaSuci, Agama: req.Agama, NRP: req.NRP, NoAK: req.NoAK, PangkatTerakhir: req.PangkatTerakhir,
 	})
 	if err != nil {
 		return handleError(c, err)
@@ -181,6 +192,7 @@ func (h *Handler) Register(c echo.Context) error {
 	m, err := h.service.Register(c.Request().Context(), RegisterInput{
 		FullName: req.FullName, Email: req.Email, KordaID: req.KordaID, Password: req.Password,
 		Phone: req.Phone, Address: req.Address, Generation: req.Generation, ParentMemberNumber: req.ParentMemberNumber,
+		NamaSuci: req.NamaSuci, Agama: req.Agama, NRP: req.NRP, NoAK: req.NoAK, PangkatTerakhir: req.PangkatTerakhir,
 	})
 	if err != nil {
 		return handleError(c, err)
@@ -252,6 +264,8 @@ func handleError(c echo.Context, err error) error {
 		return response.Error(c, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrAccountNotClaimed):
 		return response.Error(c, http.StatusConflict, err.Error())
+	case errors.Is(err, ErrParentNotVerified):
+		return response.Error(c, http.StatusBadRequest, err.Error())
 	default:
 		return response.Error(c, http.StatusBadRequest, err.Error())
 	}
