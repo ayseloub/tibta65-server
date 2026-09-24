@@ -8,4 +8,4 @@ CREATE TABLE gp_about_settings (
 );
 
 INSERT INTO gp_about_settings (id, title, description, stat_1, stat_2)
-VALUES ('01HGPABOUTSETTINGSSINGLETON01', '', '', '', '');
+VALUES ('01JAGPABOUTSETTINGS000001', '', '', '', '');
