@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS gp_about_settings;

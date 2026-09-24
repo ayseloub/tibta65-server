@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS gp_hero_slides;

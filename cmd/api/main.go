@@ -12,40 +12,33 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog/log"
 
+	_ "github.com/Tibta65web/tibta65-server/docs"
 	"github.com/Tibta65web/tibta65-server/internal/config"
 	"github.com/Tibta65web/tibta65-server/internal/domain/achievement"
+	"github.com/Tibta65web/tibta65-server/internal/domain/adminmanagement"
 	"github.com/Tibta65web/tibta65-server/internal/domain/auth"
 	"github.com/Tibta65web/tibta65-server/internal/domain/backgroundcontent"
 	"github.com/Tibta65web/tibta65-server/internal/domain/berita"
+	"github.com/Tibta65web/tibta65-server/internal/domain/gallery"
+	"github.com/Tibta65web/tibta65-server/internal/domain/gpaboutsettings"
+	"github.com/Tibta65web/tibta65-server/internal/domain/gpheroslide"
+	"github.com/Tibta65web/tibta65-server/internal/domain/gpkategori"
+	"github.com/Tibta65web/tibta65-server/internal/domain/gpkegiatan"
 	"github.com/Tibta65web/tibta65-server/internal/domain/heroslide"
-	"github.com/Tibta65web/tibta65-server/internal/domain/memberactivation"
-	"github.com/Tibta65web/tibta65-server/pkg/database"
-	"github.com/Tibta65web/tibta65-server/pkg/logger"
-
-	_ "github.com/Tibta65web/tibta65-server/docs"
-	echoSwagger "github.com/swaggo/echo-swagger"
-
-	"github.com/Tibta65web/tibta65-server/pkg/storage"
-
 	"github.com/Tibta65web/tibta65-server/internal/domain/kategori"
 	"github.com/Tibta65web/tibta65-server/internal/domain/kegiatan"
 	"github.com/Tibta65web/tibta65-server/internal/domain/korda"
-
-	"github.com/Tibta65web/tibta65-server/internal/domain/adminmanagement"
-
 	"github.com/Tibta65web/tibta65-server/internal/domain/member"
-
-	"github.com/Tibta65web/tibta65-server/pkg/email"
-
-	"github.com/Tibta65web/tibta65-server/internal/domain/pemilu"
-
+	"github.com/Tibta65web/tibta65-server/internal/domain/memberactivation"
 	"github.com/Tibta65web/tibta65-server/internal/domain/membermanagement"
-
-	"github.com/Tibta65web/tibta65-server/internal/domain/gallery"
-
+	"github.com/Tibta65web/tibta65-server/internal/domain/pemilu"
 	"github.com/Tibta65web/tibta65-server/internal/domain/sitesettings"
-
 	"github.com/Tibta65web/tibta65-server/internal/domain/ticket"
+	"github.com/Tibta65web/tibta65-server/pkg/database"
+	"github.com/Tibta65web/tibta65-server/pkg/email"
+	"github.com/Tibta65web/tibta65-server/pkg/logger"
+	"github.com/Tibta65web/tibta65-server/pkg/storage"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
 const jwtExpiry = 2 * time.Hour
@@ -167,6 +160,22 @@ func main() {
 	activationService := memberactivation.NewService(activationTokenRepo, pendingChangeRepo, memberRepo, fileStorage, cfg.MemberJWTSecret, jwtExpiry, cfg.GoogleClientID)
 	activationHandler := memberactivation.NewHandler(activationService)
 
+	gpKegiatanRepo := gpkegiatan.NewRepository(db)
+	gpKegiatanService := gpkegiatan.NewService(gpKegiatanRepo, fileStorage)
+	gpKegiatanHandler := gpkegiatan.NewHandler(gpKegiatanService)
+
+	gpKategoriRepo := gpkategori.NewRepository(db)
+	gpKategoriService := gpkategori.NewService(gpKategoriRepo)
+	gpKategoriHandler := gpkategori.NewHandler(gpKategoriService)
+
+	gpHeroSlideRepo := gpheroslide.NewRepository(db)
+	gpHeroSlideService := gpheroslide.NewService(gpHeroSlideRepo, fileStorage)
+	gpHeroSlideHandler := gpheroslide.NewHandler(gpHeroSlideService)
+
+	gpAboutSettingsRepo := gpaboutsettings.NewRepository(db)
+	gpAboutSettingsService := gpaboutsettings.NewService(gpAboutSettingsRepo)
+	gpAboutSettingsHandler := gpaboutsettings.NewHandler(gpAboutSettingsService)
+
 	e := echo.New()
 	e.HideBanner = true
 
@@ -175,6 +184,8 @@ func main() {
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{
 			"https://tibta65.vercel.app",
+			"https://gp-tibta-65-ug98.vercel.app/home",
+			"http://localhost:3000",
 		},
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
 		AllowHeaders: []string{"Content-Type", "Authorization"},
@@ -204,6 +215,10 @@ func main() {
 	berita.RegisterRoutes(e, beritaHandler, cfg.JWTSecret, cfg.MemberJWTSecret)
 	heroslide.RegisterRoutes(e, heroSlideHandler, cfg.JWTSecret)
 	memberactivation.RegisterRoutes(e, activationHandler, cfg.JWTSecret)
+	gpkegiatan.RegisterRoutes(e, gpKegiatanHandler, cfg.JWTSecret)
+	gpkategori.RegisterRoutes(e, gpKategoriHandler, cfg.JWTSecret)
+	gpheroslide.RegisterRoutes(e, gpHeroSlideHandler, cfg.JWTSecret)
+	gpaboutsettings.RegisterRoutes(e, gpAboutSettingsHandler, cfg.JWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {
