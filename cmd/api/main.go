@@ -184,7 +184,7 @@ func main() {
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{
 			"https://tibta65.vercel.app",
-			"https://gp-tibta-65-ug98.vercel.app/home",
+			"https://gp-tibta-65.vercel.app",
 			"http://localhost:3000",
 		},
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
