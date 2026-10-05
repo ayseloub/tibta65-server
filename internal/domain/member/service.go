@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"mime/multipart"
+	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -28,24 +29,31 @@ var (
 	ErrInvalidParentMemberNumber = errors.New("nomor induk orang tua tidak ditemukan")
 	ErrParentGenerationMismatch  = errors.New("nomor induk yang dimasukkan bukan dari generasi sebelumnya")
 	ErrNotDirectChild            = errors.New("kamu hanya bisa menghapus akun yang terdaftar menggunakan nomor indukmu")
-	ErrProfileAlreadyCompleted   = errors.New("profil sudah pernah dilengkapi sebelumnya")
 	ErrAccountNotClaimed         = errors.New("akun ini belum diaktivasi, silakan gunakan halaman Aktivasi Akun dengan token dari admin")
 	ErrParentNotVerified         = errors.New("nomor induk orang tua belum terverifikasi (masih menunggu persetujuan atau ditolak)")
+	ErrAccountBlocked            = errors.New("pendaftaran akun ini ditolak oleh admin. Hubungi admin TIBTA 65 jika menurutmu ini keliru")
+	ErrBiodataLocked             = errors.New("biodata tidak bisa diubah pada status akun saat ini")
+	ErrAccountNotActive          = errors.New("akun kamu belum aktif")
 
 	otpExpiry = 10 * time.Minute
 )
 
+// Pendaftaran cuma butuh 3 data. Sisanya diisi lewat halaman biodata (SubmitBiodata).
 type RegisterInput struct {
+	FullName string
+	Email    string
+	Password string
+}
+
+type SubmitBiodataInput struct {
 	FullName           string
-	Email              string
 	KordaID            string
-	Password           string
 	Phone              string
 	Address            string
 	Generation         int
 	ParentMemberNumber string
-	NamaSuci           string
 	Agama              string
+	NamaSuci           string
 	NRP                string
 	NoAK               string
 	PangkatTerakhir    string
@@ -74,7 +82,7 @@ type Service interface {
 	ChangePassword(ctx context.Context, memberID, currentPassword, newPassword string) error
 	GetFamily(ctx context.Context, memberID string) (*FamilyResult, error)
 	DeleteChild(ctx context.Context, requesterID, targetID string) error
-	CompleteProfile(ctx context.Context, memberID string, generation int, parentMemberNumber, kordaID string) (*Member, error)
+	SubmitBiodata(ctx context.Context, memberID string, in SubmitBiodataInput) (*Member, error)
 }
 
 type service struct {
@@ -99,41 +107,50 @@ type UpdateProfileInput struct {
 	PangkatTerakhir string
 }
 
+func isBlocked(m *Member) bool {
+	if m.Status != StatusRejected {
+		return false
+	}
+	return m.RejectionType == nil || *m.RejectionType != RejectionIncomplete
+}
+
+func emptyToNil(s string) *string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 func (s *service) UpdateProfile(ctx context.Context, memberID string, in UpdateProfileInput) (*Member, error) {
 	if in.FullName == "" {
 		return nil, ErrValidation
 	}
 
-	var phonePtr, addressPtr, kordaPtr, namaSuciPtr, agamaPtr, nrpPtr, noAkPtr, pangkatPtr *string
-	if in.Phone != "" {
-		phonePtr = &in.Phone
+	existing, err := s.repo.FindByID(ctx, memberID)
+	if existing.Status == StatusPendingReview {
+		return nil, ErrBiodataLocked
 	}
-	if in.Address != "" {
-		addressPtr = &in.Address
-	}
-	if in.KordaID != "" {
-		kordaPtr = &in.KordaID
-	}
-	if in.NamaSuci != "" {
-		namaSuciPtr = &in.NamaSuci
-	}
-	if in.Agama != "" {
-		agamaPtr = &in.Agama
-	}
-	if in.NRP != "" {
-		nrpPtr = &in.NRP
-	}
-	if in.NoAK != "" {
-		noAkPtr = &in.NoAK
-	}
-	if in.PangkatTerakhir != "" {
-		pangkatPtr = &in.PangkatTerakhir
+	if err != nil {
+		return nil, err
 	}
 
 	m := &Member{
-		ID: memberID, FullName: in.FullName, Phone: phonePtr, Address: addressPtr, KordaID: kordaPtr,
-		NamaSuci: namaSuciPtr, Agama: agamaPtr, NRP: nrpPtr, NoAK: noAkPtr, PangkatTerakhir: pangkatPtr,
+		ID:       memberID,
+		FullName: in.FullName,
+		Phone:    emptyToNil(in.Phone),
+		Address:  emptyToNil(in.Address),
+		KordaID:  emptyToNil(in.KordaID),
+		Agama:    emptyToNil(in.Agama),
 	}
+
+	if existing.Generation == 1 {
+		m.NamaSuci = emptyToNil(in.NamaSuci)
+		m.NRP = emptyToNil(in.NRP)
+		m.NoAK = emptyToNil(in.NoAK)
+		m.PangkatTerakhir = emptyToNil(in.PangkatTerakhir)
+	}
+
 	if err := s.repo.UpdateProfile(ctx, m); err != nil {
 		return nil, err
 	}
@@ -204,6 +221,9 @@ func (s *service) GetFamily(ctx context.Context, memberID string) (*FamilyResult
 	if err != nil {
 		return nil, err
 	}
+	if self.Status != StatusActive {
+		return nil, ErrAccountNotActive
+	}
 
 	if self.ParentMemberID == nil {
 		descendants, err := s.repo.FindDescendants(ctx, self.ID)
@@ -235,6 +255,14 @@ func (s *service) GetFamily(ctx context.Context, memberID string) (*FamilyResult
 }
 
 func (s *service) DeleteChild(ctx context.Context, requesterID, targetID string) error {
+	requester, err := s.repo.FindByID(ctx, requesterID)
+	if err != nil {
+		return err
+	}
+	if requester.Status != StatusActive {
+		return ErrAccountNotActive
+	}
+
 	target, err := s.repo.FindByID(ctx, targetID)
 	if err != nil {
 		return err
@@ -257,40 +285,14 @@ func generateOTPCode() string {
 }
 
 func (s *service) Register(ctx context.Context, in RegisterInput) (*Member, error) {
-	if in.FullName == "" || in.Email == "" || in.KordaID == "" || in.Password == "" {
+	if in.FullName == "" || in.Email == "" || in.Password == "" {
 		return nil, ErrValidation
 	}
 	if len(in.Password) < 8 {
 		return nil, errors.New("password minimal 8 karakter")
 	}
 
-	generation := in.Generation
-	if generation < 1 {
-		generation = 1
-	}
-
-	var parentID *string
-	if generation > 1 {
-		if in.ParentMemberNumber == "" {
-			return nil, errors.New("nomor induk orang tua wajib diisi untuk generasi di atas 1")
-		}
-		parent, err := s.repo.FindByMemberNumber(ctx, in.ParentMemberNumber)
-		if err != nil {
-			if errors.Is(err, ErrNotFound) {
-				return nil, ErrInvalidParentMemberNumber
-			}
-			return nil, err
-		}
-		if parent.Generation != generation-1 {
-			return nil, ErrParentGenerationMismatch
-		}
-		if !isLegitParentStatus(parent.Status) {
-			return nil, ErrParentNotVerified
-		}
-		parentID = &parent.ID
-	}
-
-	memberNumber, err := s.repo.NextMemberNumber(ctx, generation)
+	memberNumber, err := s.repo.NextMemberNumber(ctx, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -301,50 +303,14 @@ func (s *service) Register(ctx context.Context, in RegisterInput) (*Member, erro
 	}
 	hashStr := string(hash)
 
-	var phonePtr, addressPtr *string
-	if in.Phone != "" {
-		phonePtr = &in.Phone
-	}
-	if in.Address != "" {
-		addressPtr = &in.Address
-	}
-
-	var namaSuciPtr, agamaPtr, nrpPtr, noAkPtr, pangkatPtr *string
-	if in.NamaSuci != "" {
-		namaSuciPtr = &in.NamaSuci
-	}
-	if in.Agama != "" {
-		agamaPtr = &in.Agama
-	}
-	if in.NRP != "" {
-		nrpPtr = &in.NRP
-	}
-	if in.NoAK != "" {
-		noAkPtr = &in.NoAK
-	}
-	if in.PangkatTerakhir != "" {
-		pangkatPtr = &in.PangkatTerakhir
-	}
-
-	kordaID := in.KordaID
 	m := &Member{
-		ID:               ulid.Make().String(),
-		FullName:         in.FullName,
-		Email:            in.Email,
-		Phone:            phonePtr,
-		Address:          addressPtr,
-		PasswordHash:     &hashStr,
-		KordaID:          &kordaID,
-		MemberNumber:     memberNumber,
-		Generation:       generation,
-		ParentMemberID:   parentID,
-		Status:           StatusPendingReview,
-		ProfileCompleted: true,
-		NamaSuci:         namaSuciPtr,
-		Agama:            agamaPtr,
-		NRP:              nrpPtr,
-		NoAK:             noAkPtr,
-		PangkatTerakhir:  pangkatPtr,
+		ID:           ulid.Make().String(),
+		FullName:     in.FullName,
+		Email:        in.Email,
+		PasswordHash: &hashStr,
+		MemberNumber: memberNumber,
+		Generation:   1,
+		Status:       StatusIncomplete,
 	}
 
 	if err := s.repo.Create(ctx, m); err != nil {
@@ -372,28 +338,34 @@ func (s *service) Register(ctx context.Context, in RegisterInput) (*Member, erro
 	return m, nil
 }
 
-func (s *service) CompleteProfile(ctx context.Context, memberID string, generation int, parentMemberNumber, kordaID string) (*Member, error) {
+func (s *service) SubmitBiodata(ctx context.Context, memberID string, in SubmitBiodataInput) (*Member, error) {
 	m, err := s.repo.FindByID(ctx, memberID)
 	if err != nil {
 		return nil, err
 	}
-	if m.ProfileCompleted {
-		return nil, ErrProfileAlreadyCompleted
+
+	canSubmit := m.Status == StatusIncomplete || (m.Status == StatusRejected && !isBlocked(m))
+	if !canSubmit {
+		return nil, ErrBiodataLocked
 	}
-	if kordaID == "" {
+
+	fullName := strings.TrimSpace(in.FullName)
+	if fullName == "" || in.KordaID == "" || strings.TrimSpace(in.Phone) == "" || strings.TrimSpace(in.Address) == "" {
 		return nil, ErrValidation
 	}
 
+	generation := in.Generation
 	if generation < 1 {
 		generation = 1
 	}
 
 	var parentID *string
 	if generation > 1 {
-		if parentMemberNumber == "" {
+		parentNumber := strings.TrimSpace(in.ParentMemberNumber)
+		if parentNumber == "" {
 			return nil, errors.New("nomor induk orang tua wajib diisi untuk generasi di atas 1")
 		}
-		parent, err := s.repo.FindByMemberNumber(ctx, parentMemberNumber)
+		parent, err := s.repo.FindByMemberNumber(ctx, parentNumber)
 		if err != nil {
 			if errors.Is(err, ErrNotFound) {
 				return nil, ErrInvalidParentMemberNumber
@@ -403,18 +375,43 @@ func (s *service) CompleteProfile(ctx context.Context, memberID string, generati
 		if parent.Generation != generation-1 {
 			return nil, ErrParentGenerationMismatch
 		}
+		if !isLegitParentStatus(parent.Status) {
+			return nil, ErrParentNotVerified
+		}
 		parentID = &parent.ID
 	}
 
-	newMemberNumber, err := s.repo.NextMemberNumber(ctx, generation)
-	if err != nil {
-		return nil, err
+	memberNumber := m.MemberNumber
+	if generation != m.Generation {
+		memberNumber, err = s.repo.NextMemberNumber(ctx, generation)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	if err := s.repo.CompleteProfile(ctx, memberID, newMemberNumber, generation, parentID, kordaID); err != nil {
-		return nil, err
+	kordaID := in.KordaID
+	updated := &Member{
+		ID:             m.ID,
+		FullName:       fullName,
+		KordaID:        &kordaID,
+		Phone:          emptyToNil(in.Phone),
+		Address:        emptyToNil(in.Address),
+		Generation:     generation,
+		MemberNumber:   memberNumber,
+		ParentMemberID: parentID,
+		Agama:          emptyToNil(in.Agama),
 	}
 
+	if generation == 1 {
+		updated.NamaSuci = emptyToNil(in.NamaSuci)
+		updated.NRP = emptyToNil(in.NRP)
+		updated.NoAK = emptyToNil(in.NoAK)
+		updated.PangkatTerakhir = emptyToNil(in.PangkatTerakhir)
+	}
+
+	if err := s.repo.SubmitBiodata(ctx, updated); err != nil {
+		return nil, err
+	}
 	return s.repo.FindByID(ctx, memberID)
 }
 
@@ -460,6 +457,10 @@ func (s *service) Login(ctx context.Context, identifier, password string) (*Logi
 		return nil, ErrEmailNotVerified
 	}
 
+	if isBlocked(m) {
+		return nil, ErrAccountBlocked
+	}
+
 	token, err := jwt.GenerateMemberToken(s.jwtSecret, m.ID, s.jwtExpiry)
 	if err != nil {
 		return nil, err
@@ -469,7 +470,14 @@ func (s *service) Login(ctx context.Context, identifier, password string) (*Logi
 }
 
 func (s *service) Me(ctx context.Context, id string) (*Member, error) {
-	return s.repo.FindByID(ctx, id)
+	m, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if isBlocked(m) {
+		return nil, ErrAccountBlocked
+	}
+	return m, nil
 }
 
 func (s *service) LoginWithGoogle(ctx context.Context, idTokenString string) (*LoginResult, error) {
@@ -489,6 +497,9 @@ func (s *service) LoginWithGoogle(ctx context.Context, idTokenString string) (*L
 
 	m, err := s.repo.FindByGoogleID(ctx, googleID)
 	if err == nil {
+		if isBlocked(m) {
+			return nil, ErrAccountBlocked
+		}
 		return s.issueTokenFor(m)
 	}
 
@@ -506,6 +517,9 @@ func (s *service) LoginWithGoogle(ctx context.Context, idTokenString string) (*L
 		if m.Status == StatusUnclaimed {
 			return nil, ErrAccountNotClaimed
 		}
+		if isBlocked(m) {
+			return nil, ErrAccountBlocked
+		}
 		if err := s.repo.LinkGoogleID(ctx, m.ID, googleID, avatarPtr); err != nil {
 			return nil, err
 		}
@@ -518,17 +532,16 @@ func (s *service) LoginWithGoogle(ctx context.Context, idTokenString string) (*L
 	}
 
 	newMember := &Member{
-		ID:               ulid.Make().String(),
-		FullName:         fullName,
-		Email:            emailAddr,
-		GoogleID:         &googleID,
-		AvatarURL:        avatarPtr,
-		KordaID:          nil,
-		MemberNumber:     memberNumber,
-		Generation:       1,
-		Status:           StatusPendingReview,
-		ProfileCompleted: false,
-		EmailVerifiedAt:  timePtr(time.Now()),
+		ID:              ulid.Make().String(),
+		FullName:        fullName,
+		Email:           emailAddr,
+		GoogleID:        &googleID,
+		AvatarURL:       avatarPtr,
+		KordaID:         nil,
+		MemberNumber:    memberNumber,
+		Generation:      1,
+		Status:          StatusIncomplete,
+		EmailVerifiedAt: timePtr(time.Now()),
 	}
 
 	if err := s.repo.Create(ctx, newMember); err != nil {

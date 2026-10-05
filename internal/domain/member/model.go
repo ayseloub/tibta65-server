@@ -26,17 +26,26 @@ type Member struct {
 	KordaID             *string    `db:"korda_id" json:"korda_id"`
 	MustChangePassword  bool       `db:"must_change_password" json:"must_change_password"`
 	EmailVerifiedAt     *time.Time `db:"email_verified_at" json:"email_verified_at"`
+	ProfileCompleted    bool       `db:"profile_completed" json:"profile_completed"`
+	RejectionType       *string    `db:"rejection_type" json:"rejection_type"`
+	RejectionReason     *string    `db:"rejection_reason" json:"rejection_reason"`
+	RejectedAt          *time.Time `db:"rejected_at" json:"rejected_at"`
 	CreatedAt           time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at" json:"updated_at"`
-	ProfileCompleted    bool       `db:"profile_completed" json:"profile_completed"`
 	KordaName           *string    `db:"korda_name" json:"korda_name"`
 	ApprovedAt          *time.Time `db:"approved_at" json:"approved_at"`
 }
 
 const (
 	StatusUnclaimed     = "unclaimed"
+	StatusIncomplete    = "incomplete"
 	StatusPendingReview = "pending_review"
 	StatusActive        = "active"
 	StatusDeceased      = "deceased"
 	StatusRejected      = "rejected"
+)
+
+const (
+	RejectionIncomplete = "incomplete"
+	RejectionSuspicious = "suspicious"
 )

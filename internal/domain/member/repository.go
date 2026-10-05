@@ -35,7 +35,7 @@ type Repository interface {
 	UpdateAvatar(ctx context.Context, id string, avatarURL *string) error
 	ClaimAccount(ctx context.Context, m *Member) error
 	FindByUsername(ctx context.Context, username string) (*Member, error)
-	CompleteProfile(ctx context.Context, memberID, memberNumber string, generation int, parentMemberID *string, kordaID string) error
+	SubmitBiodata(ctx context.Context, m *Member) error
 }
 
 type repository struct {
@@ -51,7 +51,7 @@ const memberColumns = `
 	m.username, m.generation, m.parent_member_id, m.status, m.nama_suci, m.agama, m.nrp, m.no_ak,
 	m.pangkat_terakhir, m.legacy_identifier_raw, m.password_hash, m.google_id, m.avatar_url,
 	m.korda_id, k.name AS korda_name, m.must_change_password, m.email_verified_at, m.approved_at,
-	m.profile_completed, m.created_at, m.updated_at
+	m.profile_completed, m.rejection_type, m.rejection_reason, m.rejected_at, m.created_at, m.updated_at
 `
 
 const baseSelect = "SELECT " + memberColumns + " FROM members m LEFT JOIN kordas k ON k.id = m.korda_id"
@@ -80,12 +80,31 @@ func (r *repository) FindByUsername(ctx context.Context, username string) (*Memb
 	return &m, nil
 }
 
-func (r *repository) CompleteProfile(ctx context.Context, memberID, memberNumber string, generation int, parentMemberID *string, kordaID string) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE members SET member_number = $1, generation = $2, parent_member_id = $3, korda_id = $4, profile_completed = true, updated_at = now() WHERE id = $5`,
-		memberNumber, generation, parentMemberID, kordaID, memberID,
-	)
-	return err
+func (r *repository) SubmitBiodata(ctx context.Context, m *Member) error {
+	query := `
+		UPDATE members
+		SET full_name = $1, phone = $2, address = $3, korda_id = $4,
+		    generation = $5, member_number = $6, parent_member_id = $7,
+		    agama = $8, nama_suci = $9, nrp = $10, no_ak = $11, pangkat_terakhir = $12,
+		    status = $13, profile_completed = true,
+		    rejection_type = NULL, rejection_reason = NULL, rejected_at = NULL,
+		    updated_at = now()
+		WHERE id = $14 AND status IN ('incomplete', 'rejected')
+		RETURNING updated_at
+	`
+	err := r.db.QueryRowContext(ctx, query,
+		m.FullName, m.Phone, m.Address, m.KordaID,
+		m.Generation, m.MemberNumber, m.ParentMemberID,
+		m.Agama, m.NamaSuci, m.NRP, m.NoAK, m.PangkatTerakhir,
+		StatusPendingReview, m.ID,
+	).Scan(&m.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return mapDuplicateError(err)
+	}
+	return nil
 }
 
 func (r *repository) FindByID(ctx context.Context, id string) (*Member, error) {

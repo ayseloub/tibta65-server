@@ -3,8 +3,10 @@ package membermanagement
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 
 	"github.com/Tibta65web/tibta65-server/internal/domain/member"
 )
@@ -16,16 +18,30 @@ const baseSelect = `
 	       m.username, m.generation, m.parent_member_id, m.status, m.nama_suci, m.agama, m.nrp, m.no_ak,
 	       m.pangkat_terakhir, m.legacy_identifier_raw, m.password_hash, m.google_id, m.avatar_url,
 	       m.korda_id, k.name AS korda_name, m.must_change_password, m.email_verified_at, m.approved_at,
-	       m.profile_completed, m.created_at, m.updated_at
+	       m.profile_completed, m.rejection_type, m.rejection_reason, m.rejected_at, m.created_at, m.updated_at
 	FROM members m
 	LEFT JOIN kordas k ON k.id = m.korda_id
 `
 
+type ListFilter struct {
+	IDs        []string
+	Search     string
+	KordaID    string
+	Generation int
+	Status     string
+	Page       int
+	Limit      int
+}
+
 type Repository interface {
-	FindPending(ctx context.Context, page, limit int) ([]member.Member, int, error)
-	FindAll(ctx context.Context, page, limit int) ([]member.Member, int, error)
+	FindPending(ctx context.Context, f ListFilter) ([]member.Member, int, error)
+	FindAll(ctx context.Context, f ListFilter) ([]member.Member, int, error)
+	FindForExport(ctx context.Context, f ListFilter) ([]member.Member, error)
 	CountPending(ctx context.Context) (int, error)
 	Approve(ctx context.Context, id string) error
+	Reject(ctx context.Context, id, rejectionType, reason string) error
+	Reopen(ctx context.Context, id, reason string) error
+	ApproveRejected(ctx context.Context, id string) error
 	UpdateStatus(ctx context.Context, id, status string) error
 	Delete(ctx context.Context, id string) error
 }
@@ -38,34 +54,82 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) FindPending(ctx context.Context, page, limit int) ([]member.Member, int, error) {
+func buildWhere(f ListFilter) (string, []interface{}) {
+	where := " WHERE 1=1"
+	args := []interface{}{}
+	n := 1
+
+	if f.Search != "" {
+		where += fmt.Sprintf(
+			" AND (m.full_name ILIKE $%d OR m.email ILIKE $%d OR m.member_number ILIKE $%d OR m.username ILIKE $%d OR m.nama_suci ILIKE $%d)",
+			n, n, n, n, n,
+		)
+		args = append(args, "%"+f.Search+"%")
+		n++
+	}
+	if f.KordaID != "" {
+		where += fmt.Sprintf(" AND m.korda_id = $%d", n)
+		args = append(args, f.KordaID)
+		n++
+	}
+	if f.Generation > 0 {
+		where += fmt.Sprintf(" AND m.generation = $%d", n)
+		args = append(args, f.Generation)
+		n++
+	}
+	if f.Status != "" {
+		where += fmt.Sprintf(" AND m.status = $%d", n)
+		args = append(args, f.Status)
+		n++
+	}
+	if len(f.IDs) > 0 {
+		where += fmt.Sprintf(" AND m.id = ANY($%d)", n)
+		args = append(args, pq.Array(f.IDs))
+		n++
+	}
+
+	return where, args
+}
+
+func (r *repository) findMembers(ctx context.Context, f ListFilter, orderBy string) ([]member.Member, int, error) {
+	where, args := buildWhere(f)
+
 	var total int
-	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM members WHERE status = $1", member.StatusPendingReview); err != nil {
+	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM members m"+where, args...); err != nil {
 		return nil, 0, err
 	}
 
-	offset := (page - 1) * limit
+	offset := (f.Page - 1) * f.Limit
+	args = append(args, f.Limit, offset)
+	query := baseSelect + where + fmt.Sprintf(" ORDER BY %s LIMIT $%d OFFSET $%d", orderBy, len(args)-1, len(args))
+
 	members := []member.Member{}
-	query := baseSelect + " WHERE m.status = $1 ORDER BY m.created_at ASC LIMIT $2 OFFSET $3"
-	if err := r.db.SelectContext(ctx, &members, query, member.StatusPendingReview, limit, offset); err != nil {
+	if err := r.db.SelectContext(ctx, &members, query, args...); err != nil {
 		return nil, 0, err
 	}
 	return members, total, nil
 }
 
-func (r *repository) FindAll(ctx context.Context, page, limit int) ([]member.Member, int, error) {
-	var total int
-	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM members"); err != nil {
-		return nil, 0, err
-	}
+func (r *repository) FindPending(ctx context.Context, f ListFilter) ([]member.Member, int, error) {
+	f.Status = member.StatusPendingReview
+	return r.findMembers(ctx, f, "m.created_at ASC")
+}
 
-	offset := (page - 1) * limit
+func (r *repository) FindAll(ctx context.Context, f ListFilter) ([]member.Member, int, error) {
+	return r.findMembers(ctx, f, "m.created_at DESC")
+}
+
+const maxExportRows = 5000
+
+func (r *repository) FindForExport(ctx context.Context, f ListFilter) ([]member.Member, error) {
+	where, args := buildWhere(f)
+	query := baseSelect + where + fmt.Sprintf(" ORDER BY m.generation ASC, m.member_number ASC LIMIT %d", maxExportRows)
+
 	members := []member.Member{}
-	query := baseSelect + " ORDER BY m.created_at DESC LIMIT $1 OFFSET $2"
-	if err := r.db.SelectContext(ctx, &members, query, limit, offset); err != nil {
-		return nil, 0, err
+	if err := r.db.SelectContext(ctx, &members, query, args...); err != nil {
+		return nil, err
 	}
-	return members, total, nil
+	return members, nil
 }
 
 func (r *repository) CountPending(ctx context.Context) (int, error) {
@@ -74,41 +138,57 @@ func (r *repository) CountPending(ctx context.Context) (int, error) {
 	return count, err
 }
 
+func (r *repository) execOne(ctx context.Context, query string, args ...interface{}) error {
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *repository) Approve(ctx context.Context, id string) error {
-	result, err := r.db.ExecContext(ctx,
+	return r.execOne(ctx,
 		"UPDATE members SET status = $1, approved_at = now(), updated_at = now() WHERE id = $2 AND status = $3",
 		member.StatusActive, id, member.StatusPendingReview,
 	)
-	if err != nil {
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return ErrNotFound
-	}
-	return nil
+}
+
+func (r *repository) Reject(ctx context.Context, id, rejectionType, reason string) error {
+	return r.execOne(ctx, `
+		UPDATE members
+		SET status = $1, rejection_type = $2, rejection_reason = $3, rejected_at = now(), updated_at = now()
+		WHERE id = $4 AND status = $5`,
+		member.StatusRejected, rejectionType, reason, id, member.StatusPendingReview,
+	)
+}
+
+func (r *repository) Reopen(ctx context.Context, id, reason string) error {
+	return r.execOne(ctx, `
+		UPDATE members
+		SET rejection_type = $1, rejection_reason = $2, updated_at = now()
+		WHERE id = $3 AND status = $4`,
+		member.RejectionIncomplete, reason, id, member.StatusRejected,
+	)
+}
+
+func (r *repository) ApproveRejected(ctx context.Context, id string) error {
+	return r.execOne(ctx, `
+		UPDATE members
+		SET status = $1, approved_at = now(), rejection_type = NULL, rejection_reason = NULL,
+		    rejected_at = NULL, updated_at = now()
+		WHERE id = $2 AND status = $3`,
+		member.StatusActive, id, member.StatusRejected,
+	)
 }
 
 func (r *repository) UpdateStatus(ctx context.Context, id, status string) error {
-	result, err := r.db.ExecContext(ctx, "UPDATE members SET status = $1, updated_at = now() WHERE id = $2", status, id)
-	if err != nil {
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return r.execOne(ctx, "UPDATE members SET status = $1, updated_at = now() WHERE id = $2", status, id)
 }
 
 func (r *repository) Delete(ctx context.Context, id string) error {
-	result, err := r.db.ExecContext(ctx, "DELETE FROM members WHERE id = $1", id)
-	if err != nil {
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return r.execOne(ctx, "DELETE FROM members WHERE id = $1", id)
 }

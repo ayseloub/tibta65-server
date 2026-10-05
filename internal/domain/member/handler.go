@@ -19,19 +19,9 @@ func NewHandler(service Service) *Handler {
 }
 
 type registerRequest struct {
-	FullName           string `json:"full_name"`
-	Email              string `json:"email"`
-	KordaID            string `json:"korda_id"`
-	Password           string `json:"password"`
-	Phone              string `json:"phone"`
-	Address            string `json:"address"`
-	Generation         int    `json:"generation"`
-	ParentMemberNumber string `json:"parent_member_number"`
-	NamaSuci           string `json:"nama_suci"`
-	Agama              string `json:"agama"`
-	NRP                string `json:"nrp"`
-	NoAK               string `json:"no_ak"`
-	PangkatTerakhir    string `json:"pangkat_terakhir"`
+	FullName string `json:"full_name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type loginRequest struct {
@@ -70,25 +60,37 @@ type changePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
-type completeProfileRequest struct {
+type submitBiodataRequest struct {
+	FullName           string `json:"full_name"`
+	KordaID            string `json:"korda_id"`
+	Phone              string `json:"phone"`
+	Address            string `json:"address"`
 	Generation         int    `json:"generation"`
 	ParentMemberNumber string `json:"parent_member_number"`
-	KordaID            string `json:"korda_id"`
+	Agama              string `json:"agama"`
+	NamaSuci           string `json:"nama_suci"`
+	NRP                string `json:"nrp"`
+	NoAK               string `json:"no_ak"`
+	PangkatTerakhir    string `json:"pangkat_terakhir"`
 }
 
-func (h *Handler) CompleteProfile(c echo.Context) error {
+func (h *Handler) SubmitBiodata(c echo.Context) error {
 	memberID, _ := c.Get(appMiddleware.ContextKeyMemberID).(string)
 
-	var req completeProfileRequest
+	var req submitBiodataRequest
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, http.StatusBadRequest, "Format request tidak valid")
 	}
 
-	m, err := h.service.CompleteProfile(c.Request().Context(), memberID, req.Generation, req.ParentMemberNumber, req.KordaID)
+	m, err := h.service.SubmitBiodata(c.Request().Context(), memberID, SubmitBiodataInput{
+		FullName: req.FullName, KordaID: req.KordaID, Phone: req.Phone, Address: req.Address,
+		Generation: req.Generation, ParentMemberNumber: req.ParentMemberNumber, Agama: req.Agama,
+		NamaSuci: req.NamaSuci, NRP: req.NRP, NoAK: req.NoAK, PangkatTerakhir: req.PangkatTerakhir,
+	})
 	if err != nil {
 		return handleError(c, err)
 	}
-	return response.Success(c, http.StatusOK, "Profil berhasil dilengkapi", m)
+	return response.Success(c, http.StatusOK, "Biodata berhasil dikirim dan menunggu review admin", m)
 }
 
 func (h *Handler) UpdateProfile(c echo.Context) error {
@@ -190,9 +192,7 @@ func (h *Handler) Register(c echo.Context) error {
 	}
 
 	m, err := h.service.Register(c.Request().Context(), RegisterInput{
-		FullName: req.FullName, Email: req.Email, KordaID: req.KordaID, Password: req.Password,
-		Phone: req.Phone, Address: req.Address, Generation: req.Generation, ParentMemberNumber: req.ParentMemberNumber,
-		NamaSuci: req.NamaSuci, Agama: req.Agama, NRP: req.NRP, NoAK: req.NoAK, PangkatTerakhir: req.PangkatTerakhir,
+		FullName: req.FullName, Email: req.Email, Password: req.Password,
 	})
 	if err != nil {
 		return handleError(c, err)
@@ -250,6 +250,8 @@ func handleError(c echo.Context, err error) error {
 		return response.Error(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrParentGenerationMismatch):
 		return response.Error(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, ErrParentNotVerified):
+		return response.Error(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrInvalidCredentials):
 		return response.Error(c, http.StatusUnauthorized, "Email atau password salah")
 	case errors.Is(err, ErrGoogleOnlyAccount):
@@ -260,12 +262,14 @@ func handleError(c echo.Context, err error) error {
 		return response.Error(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrNotDirectChild):
 		return response.Error(c, http.StatusForbidden, err.Error())
-	case errors.Is(err, ErrProfileAlreadyCompleted):
-		return response.Error(c, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrAccountNotClaimed):
 		return response.Error(c, http.StatusConflict, err.Error())
-	case errors.Is(err, ErrParentNotVerified):
-		return response.Error(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, ErrAccountBlocked):
+		return response.Error(c, http.StatusForbidden, err.Error())
+	case errors.Is(err, ErrAccountNotActive):
+		return response.Error(c, http.StatusForbidden, err.Error())
+	case errors.Is(err, ErrBiodataLocked):
+		return response.Error(c, http.StatusConflict, err.Error())
 	default:
 		return response.Error(c, http.StatusBadRequest, err.Error())
 	}
@@ -285,7 +289,7 @@ func RegisterRoutes(e *echo.Echo, h *Handler, jwtSecret string) {
 	e.POST("/api/member-auth/change-password", h.ChangePassword, appMiddleware.RequireMemberAuth(jwtSecret))
 	e.GET("/api/member-auth/family", h.GetFamily, appMiddleware.RequireMemberAuth(jwtSecret))
 	e.DELETE("/api/member-auth/family/:id", h.DeleteChild, appMiddleware.RequireMemberAuth(jwtSecret))
-	e.PUT("/api/member-auth/complete-profile", h.CompleteProfile, appMiddleware.RequireMemberAuth(jwtSecret))
+	e.PUT("/api/member-auth/biodata", h.SubmitBiodata, appMiddleware.RequireMemberAuth(jwtSecret))
 }
 
 type verifyOTPRequest struct {
