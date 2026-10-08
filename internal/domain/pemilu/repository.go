@@ -104,7 +104,7 @@ const kandidatSelect = `
 	SELECT k.id, k.full_name, k.visi, k.misi, k.pangkat, k.image_url, k.created_at, k.updated_at,
 	       COALESCE(COUNT(v.id), 0) AS vote_count
 	FROM kandidats k
-	LEFT JOIN votes v ON v.kandidat_id = k.id
+	LEFT JOIN votes v ON v.kandidat_id = k.id AND v.voided_at IS NULL
 `
 
 func (r *repository) FindAllKandidat(ctx context.Context) ([]Kandidat, error) {
@@ -174,7 +174,7 @@ func (r *repository) CountMembers(ctx context.Context) (int, error) {
 
 func (r *repository) CountVotes(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.GetContext(ctx, &count, "SELECT COUNT(*) FROM votes")
+	err := r.db.GetContext(ctx, &count, "SELECT COUNT(*) FROM votes WHERE voided_at IS NULL")
 	return count, err
 }
 

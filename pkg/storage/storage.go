@@ -16,7 +16,7 @@ type Storage interface {
 	Delete(ctx context.Context, path string) error
 }
 
-const MaxUploadSizeBytes = 2 * 1024 * 1024
+const MaxUploadSizeBytes = 5 * 1024 * 1024
 
 func validateFile(fileHeader *multipart.FileHeader) error {
 	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
@@ -24,7 +24,7 @@ func validateFile(fileHeader *multipart.FileHeader) error {
 		return fmt.Errorf("tipe file tidak didukung: %s", ext)
 	}
 	if fileHeader.Size > MaxUploadSizeBytes {
-		return fmt.Errorf("ukuran file maksimal 1MB")
+		return fmt.Errorf("ukuran file maksimal 5 MB")
 	}
 	return nil
 }

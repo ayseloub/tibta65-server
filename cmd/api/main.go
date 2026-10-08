@@ -176,6 +176,10 @@ func main() {
 	gpAboutSettingsService := gpaboutsettings.NewService(gpAboutSettingsRepo)
 	gpAboutSettingsHandler := gpaboutsettings.NewHandler(gpAboutSettingsService)
 
+	pemiluVoidRepo := pemilu.NewVoidRepository(db)
+	pemiluVoidService := pemilu.NewVoidService(pemiluVoidRepo)
+	pemiluVoidHandler := pemilu.NewVoidHandler(pemiluVoidService)
+
 	e := echo.New()
 	e.HideBanner = true
 
@@ -219,6 +223,7 @@ func main() {
 	gpkategori.RegisterRoutes(e, gpKategoriHandler, cfg.JWTSecret)
 	gpheroslide.RegisterRoutes(e, gpHeroSlideHandler, cfg.JWTSecret)
 	gpaboutsettings.RegisterRoutes(e, gpAboutSettingsHandler, cfg.JWTSecret)
+	pemilu.RegisterVoidRoutes(e, pemiluVoidHandler, cfg.JWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {

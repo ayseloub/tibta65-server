@@ -189,6 +189,33 @@ func (r *repository) UpdateStatus(ctx context.Context, id, status string) error 
 	return r.execOne(ctx, "UPDATE members SET status = $1, updated_at = now() WHERE id = $2", status, id)
 }
 
+var ErrHasActiveVote = errors.New("anggota ini sudah memberikan suara. Batalkan suaranya dulu di tab Suara Dibatalkan pada halaman Pemilu")
+
 func (r *repository) Delete(ctx context.Context, id string) error {
-	return r.execOne(ctx, "DELETE FROM members WHERE id = $1", id)
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var active int
+	if err := tx.GetContext(ctx, &active, "SELECT COUNT(*) FROM votes WHERE member_id = $1 AND voided_at IS NULL", id); err != nil {
+		return err
+	}
+	if active > 0 {
+		return ErrHasActiveVote
+	}
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM votes WHERE member_id = $1 AND voided_at IS NOT NULL", id); err != nil {
+		return err
+	}
+
+	result, err := tx.ExecContext(ctx, "DELETE FROM members WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit()
 }

@@ -191,6 +191,8 @@ func handleError(c echo.Context, err error) error {
 		return response.Error(c, http.StatusBadRequest, "Nama lengkap wajib diisi")
 	case errors.Is(err, member.ErrDuplicateMemberNumber):
 		return response.Error(c, http.StatusConflict, err.Error())
+	case errors.Is(err, ErrHasActiveVote):
+		return response.Error(c, http.StatusConflict, err.Error())
 	default:
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
