@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 
 	"github.com/Tibta65web/tibta65-server/internal/domain/auth"
 	"github.com/Tibta65web/tibta65-server/internal/domain/member"
@@ -183,6 +184,8 @@ func handleError(c echo.Context, err error) error {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return response.Error(c, http.StatusNotFound, "Anggota tidak ditemukan")
+	case errors.Is(err, ErrHasActiveVote), errors.Is(err, ErrHasChildren):
+		return response.Error(c, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrInvalidStatusTransition), errors.Is(err, ErrInvalidRejectionType), errors.Is(err, ErrReasonRequired):
 		return response.Error(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrNoExportField):
@@ -191,9 +194,8 @@ func handleError(c echo.Context, err error) error {
 		return response.Error(c, http.StatusBadRequest, "Nama lengkap wajib diisi")
 	case errors.Is(err, member.ErrDuplicateMemberNumber):
 		return response.Error(c, http.StatusConflict, err.Error())
-	case errors.Is(err, ErrHasActiveVote):
-		return response.Error(c, http.StatusConflict, err.Error())
 	default:
+		log.Error().Err(err).Str("path", c.Request().URL.Path).Msg("membermanagement: error tak dikenal")
 		return response.Error(c, http.StatusInternalServerError, "Terjadi kesalahan pada server")
 	}
 }

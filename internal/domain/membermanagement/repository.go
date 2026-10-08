@@ -11,7 +11,11 @@ import (
 	"github.com/Tibta65web/tibta65-server/internal/domain/member"
 )
 
-var ErrNotFound = errors.New("member not found")
+var (
+	ErrNotFound      = errors.New("member not found")
+	ErrHasActiveVote = errors.New("anggota ini sudah memberikan suara. Batalkan suaranya dulu di tab Suara Dibatalkan pada halaman Pemilu")
+	ErrHasChildren   = errors.New("anggota ini punya keturunan yang terdaftar. Tinjau atau hapus akun keturunannya terlebih dahulu")
+)
 
 const baseSelect = `
 	SELECT m.id, m.full_name, m.email, m.phone, m.address, m.legacy_member_number, m.member_number,
@@ -189,8 +193,6 @@ func (r *repository) UpdateStatus(ctx context.Context, id, status string) error 
 	return r.execOne(ctx, "UPDATE members SET status = $1, updated_at = now() WHERE id = $2", status, id)
 }
 
-var ErrHasActiveVote = errors.New("anggota ini sudah memberikan suara. Batalkan suaranya dulu di tab Suara Dibatalkan pada halaman Pemilu")
-
 func (r *repository) Delete(ctx context.Context, id string) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -198,24 +200,45 @@ func (r *repository) Delete(ctx context.Context, id string) error {
 	}
 	defer tx.Rollback()
 
-	var active int
-	if err := tx.GetContext(ctx, &active, "SELECT COUNT(*) FROM votes WHERE member_id = $1 AND voided_at IS NULL", id); err != nil {
+	var exists int
+	if err := tx.GetContext(ctx, &exists, "SELECT COUNT(*) FROM members WHERE id = $1", id); err != nil {
 		return err
 	}
-	if active > 0 {
+	if exists == 0 {
+		return ErrNotFound
+	}
+
+	var activeVotes int
+	if err := tx.GetContext(ctx, &activeVotes, "SELECT COUNT(*) FROM votes WHERE member_id = $1 AND voided_at IS NULL", id); err != nil {
+		return err
+	}
+	if activeVotes > 0 {
 		return ErrHasActiveVote
+	}
+
+	var children int
+	if err := tx.GetContext(ctx, &children, "SELECT COUNT(*) FROM members WHERE parent_member_id = $1", id); err != nil {
+		return err
+	}
+	if children > 0 {
+		return ErrHasChildren
 	}
 
 	if _, err := tx.ExecContext(ctx, "DELETE FROM votes WHERE member_id = $1 AND voided_at IS NOT NULL", id); err != nil {
 		return err
 	}
-
-	result, err := tx.ExecContext(ctx, "DELETE FROM members WHERE id = $1", id)
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM member_activation_tokens WHERE member_id = $1", id); err != nil {
 		return err
 	}
-	if rows, _ := result.RowsAffected(); rows == 0 {
-		return ErrNotFound
+	if _, err := tx.ExecContext(ctx, "DELETE FROM member_pending_changes WHERE member_id = $1", id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE tickets SET reported_member_id = NULL WHERE reported_member_id = $1", id); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM members WHERE id = $1", id); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
