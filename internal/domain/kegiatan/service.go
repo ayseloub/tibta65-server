@@ -9,6 +9,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
 
+	"github.com/Tibta65web/tibta65-server/pkg/richtext"
 	"github.com/Tibta65web/tibta65-server/pkg/slug"
 	"github.com/Tibta65web/tibta65-server/pkg/storage"
 )
@@ -107,6 +108,11 @@ func (s *service) Get(ctx context.Context, slugParam string) (*Kegiatan, error) 
 }
 
 func (s *service) Create(ctx context.Context, in CreateInput) (*Kegiatan, error) {
+	in.Description = richtext.Sanitize(in.Description)
+	if richtext.Length(in.Description) > 200 {
+		return nil, ErrValidation
+	}
+
 	if in.Title == "" || in.Date == "" || in.KordaID == "" || in.KategoriID == "" || in.Location == "" || in.Description == "" {
 		return nil, ErrValidation
 	}
@@ -155,6 +161,11 @@ func (s *service) Create(ctx context.Context, in CreateInput) (*Kegiatan, error)
 }
 
 func (s *service) Update(ctx context.Context, in UpdateInput) (*Kegiatan, error) {
+	in.Description = richtext.Sanitize(in.Description)
+	if richtext.Length(in.Description) > 200 {
+		return nil, ErrValidation
+	}
+
 	if in.Title == "" || in.Date == "" || in.KordaID == "" || in.KategoriID == "" || in.Location == "" || in.Description == "" {
 		return nil, ErrValidation
 	}

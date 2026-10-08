@@ -24,28 +24,30 @@ func parseEventDate(c echo.Context) (time.Time, error) {
 	return time.Parse("2006-01-02", c.FormValue("event_date"))
 }
 
-func parsePublishAt(c echo.Context) (*time.Time, error) {
-	raw := c.FormValue("publish_at")
+func parseOptionalTime(c echo.Context, field string) (*time.Time, error) {
+	raw := c.FormValue(field)
 	if raw == "" {
 		return nil, nil
 	}
-	t, err := time.Parse("2006-01-02T15:04", raw)
+	t, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
 		return nil, err
 	}
 	return &t, nil
 }
 
-func parseExpireAt(c echo.Context) (*time.Time, error) {
-	raw := c.FormValue("expire_at")
-	if raw == "" {
-		return nil, nil
-	}
-	t, err := time.Parse("2006-01-02T15:04", raw)
+func parseTargetGenerations(c echo.Context) []int64 {
+	params, err := c.FormParams()
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	return &t, nil
+	result := []int64{}
+	for _, raw := range params["target_generations"] {
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil && n > 0 {
+			result = append(result, n)
+		}
+	}
+	return result
 }
 
 func (h *Handler) Create(c echo.Context) error {
@@ -56,12 +58,12 @@ func (h *Handler) Create(c echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Format tanggal tidak valid")
 	}
 
-	publishAt, err := parsePublishAt(c)
+	publishAt, err := parseOptionalTime(c, "publish_at")
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "Format waktu terbit tidak valid")
 	}
 
-	expireAt, err := parseExpireAt(c)
+	expireAt, err := parseOptionalTime(c, "expire_at")
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "Format waktu berakhir tidak valid")
 	}
@@ -72,16 +74,17 @@ func (h *Handler) Create(c echo.Context) error {
 	}
 
 	result, err := h.service.Create(c.Request().Context(), CreateInput{
-		Title:       c.FormValue("title"),
-		Description: c.FormValue("description"),
-		Visibility:  c.FormValue("visibility"),
-		Status:      c.FormValue("status"),
-		EventDate:   eventDate,
-		PublishAt:   publishAt,
-		ExpireAt:    expireAt,
-		ImageHeader: fileHeader,
-		AuthorID:    adminID,
-		AuthorName:  c.FormValue("author_name"),
+		Title:             c.FormValue("title"),
+		Description:       c.FormValue("description"),
+		Visibility:        c.FormValue("visibility"),
+		Status:            c.FormValue("status"),
+		EventDate:         eventDate,
+		TargetGenerations: parseTargetGenerations(c),
+		PublishAt:         publishAt,
+		ExpireAt:          expireAt,
+		ImageHeader:       fileHeader,
+		AuthorID:          adminID,
+		AuthorName:        c.FormValue("author_name"),
 	})
 	if err != nil {
 		if errors.Is(err, ErrValidation) {
@@ -175,12 +178,12 @@ func (h *Handler) Update(c echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Format tanggal tidak valid")
 	}
 
-	publishAt, err := parsePublishAt(c)
+	publishAt, err := parseOptionalTime(c, "publish_at")
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "Format waktu terbit tidak valid")
 	}
 
-	expireAt, err := parseExpireAt(c)
+	expireAt, err := parseOptionalTime(c, "expire_at")
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "Format waktu berakhir tidak valid")
 	}
@@ -188,14 +191,15 @@ func (h *Handler) Update(c echo.Context) error {
 	fileHeader, _ := c.FormFile("image")
 
 	result, err := h.service.Update(c.Request().Context(), id, UpdateInput{
-		Title:       c.FormValue("title"),
-		Description: c.FormValue("description"),
-		Visibility:  c.FormValue("visibility"),
-		Status:      c.FormValue("status"),
-		EventDate:   eventDate,
-		PublishAt:   publishAt,
-		ExpireAt:    expireAt,
-		ImageHeader: fileHeader,
+		Title:             c.FormValue("title"),
+		Description:       c.FormValue("description"),
+		Visibility:        c.FormValue("visibility"),
+		Status:            c.FormValue("status"),
+		EventDate:         eventDate,
+		TargetGenerations: parseTargetGenerations(c),
+		PublishAt:         publishAt,
+		ExpireAt:          expireAt,
+		ImageHeader:       fileHeader,
 	})
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {

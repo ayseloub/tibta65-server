@@ -7,6 +7,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
+	"github.com/Tibta65web/tibta65-server/pkg/richtext"
 	"github.com/Tibta65web/tibta65-server/pkg/storage"
 )
 
@@ -16,6 +17,8 @@ const (
 	defaultLimit = 10
 	maxLimit     = 50
 	uploadFolder = "achievement"
+
+	descriptionMaxLen = 200
 )
 
 type ListResult struct {
@@ -56,7 +59,7 @@ func (s *service) List(ctx context.Context, page, limit int, year string) (*List
 		return nil, err
 	}
 
-	totalPages := (total + limit - 1) / limit // pembulatan ke atas
+	totalPages := (total + limit - 1) / limit
 
 	return &ListResult{
 		Items:      items,
@@ -72,7 +75,9 @@ func (s *service) Get(ctx context.Context, id string) (*Achievement, error) {
 }
 
 func (s *service) Create(ctx context.Context, year, title, description string, file *multipart.FileHeader) (*Achievement, error) {
-	if year == "" || title == "" || description == "" {
+	description = richtext.Sanitize(description)
+
+	if year == "" || title == "" || description == "" || richtext.Length(description) > descriptionMaxLen {
 		return nil, ErrValidation
 	}
 	if file == nil {
@@ -93,8 +98,6 @@ func (s *service) Create(ctx context.Context, year, title, description string, f
 	}
 
 	if err := s.repo.Create(ctx, a); err != nil {
-		// Rollback: kalau gagal simpan ke DB, hapus lagi gambar yang udah kepalang keupload,
-		// biar gak ada file "yatim" (nempel di storage tapi gak ada referensinya di DB).
 		_ = s.storage.Delete(ctx, imageURL)
 		return nil, err
 	}
@@ -103,7 +106,9 @@ func (s *service) Create(ctx context.Context, year, title, description string, f
 }
 
 func (s *service) Update(ctx context.Context, id, year, title, description string, file *multipart.FileHeader) (*Achievement, error) {
-	if year == "" || title == "" || description == "" {
+	description = richtext.Sanitize(description)
+
+	if year == "" || title == "" || description == "" || richtext.Length(description) > descriptionMaxLen {
 		return nil, ErrValidation
 	}
 

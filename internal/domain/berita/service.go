@@ -12,6 +12,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
 
+	"github.com/Tibta65web/tibta65-server/pkg/richtext"
 	"github.com/Tibta65web/tibta65-server/pkg/storage"
 )
 
@@ -19,7 +20,7 @@ var ErrValidation = errors.New("validasi gagal")
 
 const (
 	TitleMaxLen       = 60
-	DescriptionMaxLen = 1000
+	DescriptionMaxLen = 1000 // dihitung dari teks yang terlihat, bukan HTML-nya
 )
 
 type CreateInput struct {
@@ -110,10 +111,13 @@ func validateStatus(v string) bool {
 }
 
 func (s *service) Create(ctx context.Context, in CreateInput) (*Berita, error) {
+	// Sanitasi dulu, baru validasi. Editor kosong (<p></p>) jadi string kosong dan ditolak di bawah.
+	in.Description = richtext.Sanitize(in.Description)
+
 	if in.Title == "" || len(in.Title) > TitleMaxLen {
 		return nil, ErrValidation
 	}
-	if in.Description == "" || len(in.Description) > DescriptionMaxLen {
+	if in.Description == "" || richtext.Length(in.Description) > DescriptionMaxLen {
 		return nil, ErrValidation
 	}
 	if !validateVisibility(in.Visibility) || !validateStatus(in.Status) {
@@ -164,10 +168,12 @@ func (s *service) Update(ctx context.Context, id string, in UpdateInput) (*Berit
 		return nil, err
 	}
 
+	in.Description = richtext.Sanitize(in.Description)
+
 	if in.Title == "" || len(in.Title) > TitleMaxLen {
 		return nil, ErrValidation
 	}
-	if in.Description == "" || len(in.Description) > DescriptionMaxLen {
+	if in.Description == "" || richtext.Length(in.Description) > DescriptionMaxLen {
 		return nil, ErrValidation
 	}
 	if !validateVisibility(in.Visibility) || !validateStatus(in.Status) {
