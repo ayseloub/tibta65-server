@@ -180,6 +180,8 @@ func main() {
 	pemiluVoidService := pemilu.NewVoidService(pemiluVoidRepo)
 	pemiluVoidHandler := pemilu.NewVoidHandler(pemiluVoidService)
 
+	pemiluVoteNumberHandler := pemilu.NewVoteNumberHandler(db)
+
 	e := echo.New()
 	e.HideBanner = true
 
@@ -224,6 +226,7 @@ func main() {
 	gpheroslide.RegisterRoutes(e, gpHeroSlideHandler, cfg.JWTSecret)
 	gpaboutsettings.RegisterRoutes(e, gpAboutSettingsHandler, cfg.JWTSecret)
 	pemilu.RegisterVoidRoutes(e, pemiluVoidHandler, cfg.JWTSecret)
+	pemilu.RegisterVoteNumberRoutes(e, pemiluVoteNumberHandler, cfg.MemberJWTSecret)
 
 	go func() {
 		if err := e.Start(":" + cfg.AppPort); err != nil && err != http.ErrServerClosed {
